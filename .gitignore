@@ -1,0 +1,27 @@
+# Data (large + raw; never commit per CLAUDE.md)
+data/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Secrets / config
+.env
+.env.*
+.streamlit/secrets.toml
+*.key
+*.pem
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
