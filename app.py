@@ -8,6 +8,7 @@ plain-English insight derived from the data, not just a chart.
 
 from __future__ import annotations
 
+import os
 from datetime import date
 
 import plotly.graph_objects as go
@@ -28,6 +29,14 @@ st.set_page_config(page_title="Product Analytics Dashboard", layout="wide")
 
 @st.cache_data(show_spinner="Loading clickstream…")
 def get_data():
+    # Bridge a Streamlit secret to the env var the UI-free loader reads, so the
+    # app can fetch events.csv on Streamlit Cloud where data/ doesn't exist.
+    try:
+        url = st.secrets.get("EVENTS_URL")
+    except Exception:
+        url = None  # no secrets.toml present (e.g. local dev) — that's fine
+    if url and not os.environ.get("EVENTS_URL"):
+        os.environ["EVENTS_URL"] = url
     return load_events()
 
 

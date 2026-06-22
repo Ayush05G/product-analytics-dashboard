@@ -6,6 +6,10 @@ DataFrame that the metric functions in ``metrics.py`` build on.
 
 from __future__ import annotations
 
+import gzip
+import os
+import shutil
+import urllib.request
 from pathlib import Path
 
 import pandas as pd
@@ -14,6 +18,54 @@ import pandas as pd
 VALID_EVENTS: frozenset[str] = frozenset({"view", "addtocart", "transaction"})
 
 DEFAULT_PATH = Path(__file__).resolve().parents[1] / "data" / "events.csv"
+
+# Optional URL to fetch events.csv when it isn't present locally (e.g. on
+# Streamlit Community Cloud, where data/ is git-ignored). Read from the env so
+# this module stays UI-free; app.py bridges st.secrets -> env. May point to a
+# plain .csv or a gzipped .csv.gz.
+ENV_DATA_URL = "EVENTS_URL"
+
+
+def _download(url: str, dest: Path) -> Path:
+    """Stream ``url`` to ``dest`` (decompressing if it ends in .gz).
+
+    Writes to a temporary ``.part`` file first so an interrupted download can't
+    leave a truncated events.csv that later loads look valid.
+    """
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    part = dest.with_name(dest.name + ".part")
+    with urllib.request.urlopen(url) as resp, open(part, "wb") as fh:
+        shutil.copyfileobj(resp, fh)
+    if url.lower().endswith(".gz"):
+        with gzip.open(part, "rb") as gz, open(dest, "wb") as out:
+            shutil.copyfileobj(gz, out)
+        part.unlink()
+    else:
+        part.replace(dest)
+    return dest
+
+
+def resolve_data_path(path: str | Path = DEFAULT_PATH) -> Path:
+    """Return a local path to events.csv, downloading it if necessary.
+
+    Resolution order: (1) the local file if it exists; (2) download from the
+    ``EVENTS_URL`` env var; (3) raise an actionable ``FileNotFoundError``.
+    """
+    path = Path(path)
+    if path.exists():
+        return path
+
+    url = os.environ.get(ENV_DATA_URL)
+    if url:
+        return _download(url, path)
+
+    raise FileNotFoundError(
+        f"events.csv not found at {path} and {ENV_DATA_URL} is not set.\n"
+        "Either place the RetailRocket events.csv in data/ (git-ignored), or "
+        f"set {ENV_DATA_URL} to a direct download URL (.csv or .csv.gz). On "
+        "Streamlit Community Cloud, add it under Settings -> Secrets as "
+        f'`{ENV_DATA_URL} = "https://.../events.csv"`.'
+    )
 
 
 def _parse_timestamp(ts: pd.Series) -> pd.Series:
@@ -54,12 +106,7 @@ def load_events(path: str | Path = DEFAULT_PATH) -> pd.DataFrame:
     Raises ``FileNotFoundError`` if the data file is missing and ``ValueError``
     on unexpected event types or unparseable timestamps.
     """
-    path = Path(path)
-    if not path.exists():
-        raise FileNotFoundError(
-            f"events.csv not found at {path}. Place the RetailRocket dataset "
-            "in data/ (it is git-ignored)."
-        )
+    path = resolve_data_path(path)
 
     df = pd.read_csv(path)
 
