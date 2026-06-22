@@ -13,6 +13,7 @@ from datetime import date
 import plotly.graph_objects as go
 import streamlit as st
 
+from src.churn import churn_insight, make_churn_dataset, train_churn_models
 from src.data_load import load_events, sanity_report
 from src.metrics import FUNNEL_STAGES, cohort_retention, funnel, kpis
 
@@ -62,6 +63,13 @@ def get_cohorts(start: date, end: date):
 @st.cache_data
 def get_sanity(start: date, end: date):
     return sanity_report(_filter(start, end))
+
+
+@st.cache_data(show_spinner="Training churn model…")
+def get_churn():
+    """Train on the full dataset — the obs/horizon windows are intrinsic to the
+    churn definition and independent of the sidebar date filter."""
+    return train_churn_models(make_churn_dataset(get_data()))
 
 
 # --- Insight helpers (plain English, computed from the data) --------------
@@ -209,6 +217,56 @@ def _date_range_picker() -> tuple[date, date]:
     return start, end
 
 
+def render_churn() -> None:
+    res = get_churn()
+    st.subheader("Churn (Return-Prediction) Model")
+
+    scores = res["scores"]
+    best = max(scores, key=lambda m: scores[m]["roc_auc"])
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Visitors modeled", f"{res['n_visitors']:,}")
+    c2.metric("Churn base rate", f"{res['base_rate']:.1%}")
+    c3.metric("ROC-AUC (LogReg)", f"{scores['logreg']['roc_auc']:.3f}")
+    c4.metric(
+        "ROC-AUC (GBM)",
+        f"{scores['gbm']['roc_auc']:.3f}",
+        delta=f"best: {best}",
+        delta_color="off",
+    )
+
+    # Standardized logistic coefficients: comparable across features and the
+    # basis for the insight. Positive = pushes toward churn, negative = return.
+    coefs = res["coefs"]
+    items = sorted(coefs.items(), key=lambda kv: kv[1])
+    labels = [k.replace("_", " ") for k, _ in items]
+    values = [v for _, v in items]
+    fig = go.Figure(
+        go.Bar(
+            x=values,
+            y=labels,
+            orientation="h",
+            marker_color=["#c0392b" if v > 0 else "#2980b9" for v in values],
+            hovertemplate="%{y}: %{x:+.3f}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        margin=dict(l=10, r=10, t=30, b=10),
+        height=420,
+        title="What predicts churn — standardized logistic coefficients",
+        xaxis_title="← predicts return     coefficient     predicts churn →",
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.info(churn_insight(res))
+    st.caption(
+        "Churn = active in the first 30 days but no event in the following 30. "
+        "Features use the first window only (no leakage). PR-AUC is high "
+        f"({scores[best]['pr_auc']:.2f}) mainly because ~{res['base_rate']:.0%} "
+        "of visitors churn — ROC-AUC is the honest headline. Uses the full "
+        "dataset; the sidebar date filter does not apply here."
+    )
+
+
 def main() -> None:
     st.title("Product Analytics Dashboard")
     st.caption("RetailRocket clickstream — funnel, retention, and KPIs.")
@@ -219,8 +277,8 @@ def main() -> None:
         st.warning("No events in the selected date range. Widen the range.")
         return
 
-    overview, funnel_tab, retention_tab = st.tabs(
-        ["Overview", "Funnel", "Retention"]
+    overview, funnel_tab, retention_tab, churn_tab = st.tabs(
+        ["Overview", "Funnel", "Retention", "Churn"]
     )
     with overview:
         render_overview(start, end)
@@ -228,6 +286,8 @@ def main() -> None:
         render_funnel(start, end)
     with retention_tab:
         render_retention(start, end)
+    with churn_tab:
+        render_churn()
 
 
 if __name__ == "__main__":
