@@ -8,6 +8,8 @@ plain-English insight derived from the data, not just a chart.
 
 from __future__ import annotations
 
+from datetime import date
+
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -18,8 +20,9 @@ st.set_page_config(page_title="Product Analytics Dashboard", layout="wide")
 
 
 # --- Cached data layer ----------------------------------------------------
-# Each cached function takes no args and pulls the cached DataFrame internally,
-# so the 2.7M-row frame is never re-hashed as a cache key on every rerun.
+# Cached metric functions key on the (start, end) date range — cheap to hash —
+# and pull the full cached DataFrame internally, so the 2.7M-row frame is never
+# re-hashed as a cache key on every rerun.
 
 
 @st.cache_data(show_spinner="Loading clickstream…")
@@ -27,24 +30,38 @@ def get_data():
     return load_events()
 
 
+@st.cache_data
+def get_bounds() -> tuple[date, date]:
+    """Min/max calendar dates in the dataset, for the date-range picker."""
+    s = sanity_report(get_data())
+    return s["date_min"].date(), s["date_max"].date()
+
+
+def _filter(start: date, end: date):
+    """Rows whose event date falls within [start, end], inclusive."""
+    df = get_data()
+    d = df["timestamp"].dt.date
+    return df[(d >= start) & (d <= end)]
+
+
 @st.cache_data(show_spinner="Computing KPIs…")
-def get_kpis():
-    return kpis(get_data())
+def get_kpis(start: date, end: date):
+    return kpis(_filter(start, end))
 
 
 @st.cache_data(show_spinner="Building funnel…")
-def get_funnel():
-    return funnel(get_data())
+def get_funnel(start: date, end: date):
+    return funnel(_filter(start, end))
 
 
 @st.cache_data(show_spinner="Building cohorts…")
-def get_cohorts():
-    return cohort_retention(get_data(), freq="W")
+def get_cohorts(start: date, end: date):
+    return cohort_retention(_filter(start, end), freq="W")
 
 
 @st.cache_data
-def get_sanity():
-    return sanity_report(get_data())
+def get_sanity(start: date, end: date):
+    return sanity_report(_filter(start, end))
 
 
 # --- Insight helpers (plain English, computed from the data) --------------
@@ -93,9 +110,9 @@ def cohort_insight(c) -> str:
 # --- Rendering ------------------------------------------------------------
 
 
-def render_overview() -> None:
-    k = get_kpis()
-    s = get_sanity()
+def render_overview(start: date, end: date) -> None:
+    k = get_kpis(start, end)
+    s = get_sanity(start, end)
     st.subheader("Overview")
 
     c1, c2, c3 = st.columns(3)
@@ -115,8 +132,8 @@ def render_overview() -> None:
     )
 
 
-def render_funnel() -> None:
-    f = get_funnel()
+def render_funnel(start: date, end: date) -> None:
+    f = get_funnel(start, end)
     st.subheader("Conversion Funnel")
 
     fig = go.Figure(
@@ -136,8 +153,8 @@ def render_funnel() -> None:
     )
 
 
-def render_retention() -> None:
-    c = get_cohorts()
+def render_retention(start: date, end: date) -> None:
+    c = get_cohorts(start, end)
     st.subheader("Weekly Cohort Retention")
 
     z = (c * 100).round(1)
@@ -168,19 +185,49 @@ def render_retention() -> None:
     )
 
 
+def _date_range_picker() -> tuple[date, date]:
+    """Sidebar date-range control; returns the selected (start, end).
+
+    Falls back to the full dataset range while the user is mid-selection
+    (st.date_input yields a 1-tuple between the two clicks)."""
+    lo, hi = get_bounds()
+    st.sidebar.header("Filters")
+    picked = st.sidebar.date_input(
+        "Date range",
+        value=(lo, hi),
+        min_value=lo,
+        max_value=hi,
+        format="YYYY-MM-DD",
+    )
+    if isinstance(picked, (tuple, list)) and len(picked) == 2:
+        start, end = picked
+    else:  # mid-selection (single date) — hold the full range until complete
+        start, end = lo, hi
+    if start > end:
+        start, end = end, start
+    st.sidebar.caption(f"Showing {start:%b %d, %Y} – {end:%b %d, %Y}")
+    return start, end
+
+
 def main() -> None:
     st.title("Product Analytics Dashboard")
     st.caption("RetailRocket clickstream — funnel, retention, and KPIs.")
+
+    start, end = _date_range_picker()
+
+    if get_sanity(start, end)["total_rows"] == 0:
+        st.warning("No events in the selected date range. Widen the range.")
+        return
 
     overview, funnel_tab, retention_tab = st.tabs(
         ["Overview", "Funnel", "Retention"]
     )
     with overview:
-        render_overview()
+        render_overview(start, end)
     with funnel_tab:
-        render_funnel()
+        render_funnel(start, end)
     with retention_tab:
-        render_retention()
+        render_retention(start, end)
 
 
 if __name__ == "__main__":
