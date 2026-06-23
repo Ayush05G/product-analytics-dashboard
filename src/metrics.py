@@ -11,6 +11,7 @@ columns ``timestamp`` (UTC datetime), ``visitorid`` (int), ``event``
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 FUNNEL_STAGES: tuple[str, ...] = ("view", "addtocart", "transaction")
@@ -64,6 +65,10 @@ def cohort_retention(df: pd.DataFrame, freq: str = "W") -> pd.DataFrame:
     rates (week 0 == 1.0 by construction), indexed by cohort start date with
     integer column offsets (0, 1, 2, ...).
 
+    Observable-but-empty cells are 0.0 (a genuine 0% retention); only cells
+    that fall beyond the data's last period for a given cohort are left NaN
+    (not observed yet) — so a real zero is never confused with missing data.
+
     Pass ``freq="M"`` for monthly cohorts, etc. (any pandas period alias).
     """
     # Drop tz before to_period (periods are tz-naive); data is UTC so week/
@@ -77,18 +82,35 @@ def cohort_retention(df: pd.DataFrame, freq: str = "W") -> pd.DataFrame:
     work = pd.DataFrame(
         {
             "visitorid": df["visitorid"].to_numpy(),
-            "cohort": first_period.dt.start_time.to_numpy(),
+            "cohort": first_period.array,  # keep as Period for the horizon math
             "offset": offset.to_numpy(),
         }
     )
 
     # Distinct visitors active per (cohort, offset).
-    active = (
+    counts = (
         work.groupby(["cohort", "offset"])["visitorid"].nunique().unstack("offset")
     )
-    cohort_size = active[0]  # offset 0 == every visitor in the cohort
-    retention = active.div(cohort_size, axis=0)
+
+    # Each cohort is only observable out to (last data period - cohort period)
+    # offsets. Span columns to that full horizon, fill observable empties with
+    # 0, and leave still-unobservable future cells as NaN.
+    last_period = period.max()
+    cohorts = counts.index  # PeriodIndex
+    horizon = np.array([(last_period - p).n for p in cohorts])
+    max_off = int(horizon.max())
+
+    counts = counts.reindex(columns=range(max_off + 1)).astype(float)
+    offsets = np.arange(max_off + 1)
+    observable = offsets[None, :] <= horizon[:, None]
+    counts = counts.where(observable, np.nan)  # mask the future
+    counts = counts.mask(observable & counts.isna(), 0.0)  # observed zeros -> 0
+
+    cohort_size = counts[0]  # offset 0 == every visitor in the cohort
+    retention = counts.div(cohort_size, axis=0)
+    retention.index = cohorts.to_timestamp()
     retention.index.name = "cohort"
+    retention.columns.name = "offset"
     return retention
 
 
