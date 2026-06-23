@@ -8,8 +8,7 @@ The funnel / cohort / KPI logic is written as pure, UI-free functions, so the
 same analytics engine generalizes to any event stream (e.g. a fintech app),
 not just this dataset.
 
-> _Screenshot placeholder — add `docs/dashboard.png` and update this line._
-> `![Dashboard](docs/dashboard.png)`
+![Product Analytics Dashboard — conversion funnel with a plain-English insight](docs/dashboard.png)
 
 ## Dataset
 
