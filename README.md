@@ -8,6 +8,14 @@ The funnel / cohort / KPI logic is written as pure, UI-free functions, so the
 same analytics engine generalizes to any event stream (e.g. a fintech app),
 not just this dataset.
 
+**▶ Live demo: [p-analytics-dashboard.streamlit.app](https://p-analytics-dashboard.streamlit.app/)**
+
+[![Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://p-analytics-dashboard.streamlit.app/)
+
+> The live app loads ~2.7M real events on a free-tier instance, so the first
+> visit may take a moment to wake and load. If it's asleep, click "Yes, get
+> this app back up!" and give it a few seconds.
+
 ![Product Analytics Dashboard — conversion funnel with a plain-English insight](docs/dashboard.png)
 
 ## Dataset
@@ -96,16 +104,20 @@ streamlit run app.py
 
 ## Deployment
 
-Built for **Streamlit Community Cloud**. Because `data/` is git-ignored, the
-app fetches `events.csv` at runtime when it isn't present locally:
+Live on **Streamlit Community Cloud** at
+**[p-analytics-dashboard.streamlit.app](https://p-analytics-dashboard.streamlit.app/)**.
 
-1. Push this repo to GitHub (done).
-2. Host `events.csv` at a direct-download URL — a GitHub Release asset or a
-   cloud bucket works well. Gzip it to `events.csv.gz` to cut the ~94 MB
-   transfer roughly 5×; the loader decompresses `.gz` automatically.
+Because `data/` is git-ignored, the app fetches `events.csv` at runtime when
+it isn't present locally. To reproduce the deploy:
+
+1. Push this repo to GitHub.
+2. Host `events.csv` at a direct-download URL. This project ships it as a
+   gzipped [GitHub Release asset](https://github.com/Ayush05G/product-analytics-dashboard/releases/tag/data-v1)
+   (`events.csv.gz`, ~33 MB vs. 90 MB raw); the loader decompresses `.gz`
+   automatically.
 3. In the Streamlit app's **Settings → Secrets**, add:
    ```toml
-   EVENTS_URL = "https://.../events.csv.gz"
+   EVENTS_URL = "https://github.com/Ayush05G/product-analytics-dashboard/releases/download/data-v1/events.csv.gz"
    ```
    (See [`.streamlit/secrets.toml.example`](.streamlit/secrets.toml.example).)
 4. Deploy. The first boot downloads the file into the ephemeral `data/`;
