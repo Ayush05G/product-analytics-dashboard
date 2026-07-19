@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.metrics import cohort_retention, funnel, kpis
+from src.metrics import cohort_retention, daily_active, funnel, kpis, top_items
 
 
 @pytest.fixture
@@ -65,3 +65,29 @@ def test_cohort_retention_shape_and_values(events):
     # v3 acquired in week 2; no data for its week 1 -> NaN.
     assert c.loc[week2_cohort, 0] == pytest.approx(1.0)
     assert pd.isna(c.loc[week2_cohort, 1])
+
+
+def test_daily_active_values(events):
+    da = daily_active(events)
+    assert len(da) == 3  # Jan 4, Jan 5, Jan 11
+    assert da.tolist() == [2, 1, 1]  # {v1,v2}, {v1}, {v3}
+    assert da.index.is_monotonic_increasing
+
+
+def test_top_items_counts_and_order(events):
+    items = top_items(events, n=10, min_views=1)
+    # item 1: view+cart+txn; item 2: view+cart; item 3: view only.
+    assert items.index[0] == 1  # sorted by purchases first
+    assert items.loc[1, "views"] == 1
+    assert items.loc[1, "carts"] == 1
+    assert items.loc[1, "purchases"] == 1
+    assert items.loc[1, "view_to_purchase"] == pytest.approx(1.0)
+    assert items.loc[2, "purchases"] == 0
+    assert items.loc[3, "carts"] == 0
+
+
+def test_top_items_min_views_floor(events):
+    items = top_items(events, n=10, min_views=50)
+    # No item has 50+ views -> every conversion is NaN, counts unaffected.
+    assert items["view_to_purchase"].isna().all()
+    assert items["purchases"].sum() == 1

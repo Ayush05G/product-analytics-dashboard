@@ -67,6 +67,9 @@ def test_load_dtypes_and_sorted(tmp_path):
     df = load_events(csv)
     assert str(df["event"].dtype) == "category"
     assert str(df["transactionid"].dtype) == "Int64"
+    # int32 ids: deliberate downcast to halve RAM on the deploy tier.
+    assert str(df["visitorid"].dtype) == "int32"
+    assert str(df["itemid"].dtype) == "int32"
     assert df["timestamp"].is_monotonic_increasing
     assert df["visitorid"].iloc[0] == 1
 

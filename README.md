@@ -11,6 +11,7 @@ not just this dataset.
 **▶ Live demo: [p-analytics-dashboard.streamlit.app](https://p-analytics-dashboard.streamlit.app/)**
 
 [![Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://p-analytics-dashboard.streamlit.app/)
+[![tests](https://github.com/Ayush05G/product-analytics-dashboard/actions/workflows/tests.yml/badge.svg)](https://github.com/Ayush05G/product-analytics-dashboard/actions/workflows/tests.yml)
 
 > The live app loads ~2.7M real events on a free-tier instance, so the first
 > visit may take a moment to wake and load. If it's asleep, click "Yes, get
@@ -39,10 +40,26 @@ supply it.
 
 | Tab | Question it answers | Sample insight (from the data) |
 |---|---|---|
-| **Overview** | How healthy is the funnel overall? | Acquisition is broad (~297k MAU) but only **0.83%** of visitors ever purchase and **10.2%** return on a second day — repeat engagement is the lever. |
+| **Overview** | How healthy is the funnel overall? | Acquisition is broad (~297k MAU) but only **0.83%** of visitors ever purchase and **10.2%** return on a second day — repeat engagement is the lever. Includes a daily-active-visitors trend chart. |
 | **Funnel** | Where do visitors drop off? | Biggest leak is **view → addtocart** (only 2.69% convert); of those who add to cart, **31%** go on to purchase. |
-| **Retention** | Do cohorts come back? | On average only **~4.6%** of a week's new visitors return the following week. |
+| **Retention** | Do cohorts come back? | On average only **~4.6%** of a week's new visitors return the following week — heatmap plus an average decay curve. |
+| **Items** | Which products drive the business? | The volume leader took **133 purchases** from 2,538 views, while the best-converting high-traffic item turns **31%** of views into purchases. |
 | **Churn** | Who won't come back, and why? | **95%** of first-window visitors don't return in 30 days; **recency** drives churn while **active days / breadth** drive return (ROC-AUC ≈ 0.69). |
+
+### Interactive churn predictor
+
+The Churn tab doesn't just report the model — it lets you use it:
+
+- **Visitor lookup** — enter any visitor ID from the observation window and get
+  their churn probability as a gauge, with their behavioral features alongside.
+- **What-if sliders** — describe a hypothetical first month of behavior and
+  watch the predicted risk respond live (more active days ⇒ lower risk; going
+  quiet ⇒ higher).
+- **At-risk list** — visitors who added to cart or purchased but are predicted
+  not to return, ranked by risk, exportable as CSV: the concrete re-engagement
+  target list.
+
+![Churn predictor — visitor lookup with probability gauge](docs/churn_predictor.png)
 
 ## Metric definitions
 
@@ -69,8 +86,11 @@ supply it.
 app.py              Streamlit UI only — imports from src/
 src/
   data_load.py      load + clean + validate events; resolves data source
-  metrics.py        pure functions: funnel(), cohort_retention(), kpis()
-  churn.py          churn dataset + model training/evaluation
+  metrics.py        pure functions: funnel(), cohort_retention(), kpis(),
+                    daily_active(), top_items()
+  churn.py          churn dataset, model training/evaluation, scoring
+tests/              pytest suite (synthetic fixtures, hand-computed expectations)
+.github/workflows/  CI — pytest on every push
 data/               raw data (git-ignored, never committed)
 requirements.txt    pinned dependencies
 ```
@@ -81,8 +101,9 @@ consistency checks:
 
 ```bash
 python src/data_load.py   # sanity check: row count, visitors, event mix, dates
-python src/metrics.py     # funnel / retention / KPI numbers + assertions
-python src/churn.py       # churn model metrics + coefficients + insight
+python src/metrics.py     # funnel / retention / KPI / item numbers + assertions
+python src/churn.py       # churn model metrics, scoring + insight
+pytest                    # unit tests (no dataset needed — synthetic fixtures)
 ```
 
 ## Running locally

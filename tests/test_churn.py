@@ -16,7 +16,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.churn import FEATURES, churn_insight, make_churn_dataset, train_churn_models
+from src.churn import (
+    FEATURES,
+    at_risk_visitors,
+    churn_insight,
+    make_churn_dataset,
+    predict_one,
+    score_visitors,
+    train_churn_models,
+)
 
 
 @pytest.fixture
@@ -73,7 +81,9 @@ def test_too_short_dataset_raises():
         make_churn_dataset(df, obs_days=30, horizon_days=30)
 
 
-def test_train_models_runs():
+@pytest.fixture(scope="module")
+def trained() -> tuple[pd.DataFrame, dict]:
+    """Synthetic 200-visitor feature table + trained models (built once)."""
     rng = np.random.default_rng(0)
     n = 200
     recency = rng.uniform(0, 30, n)
@@ -81,14 +91,59 @@ def test_train_models_runs():
     dataset["recency_days"] = recency
     # Deterministic, guaranteed-balanced label correlated with recency.
     dataset["churned"] = (recency > np.median(recency)).astype(int)
+    dataset.index = pd.Index(range(1000, 1000 + n), name="visitorid")
+    return dataset, train_churn_models(dataset)
 
-    res = train_churn_models(dataset)
+
+def test_train_models_runs(trained):
+    dataset, res = trained
     assert set(res["models"]) == {"logreg", "gbm"}
-    assert res["n_visitors"] == n
+    assert res["n_visitors"] == len(dataset)
     assert len(res["coefs"]) == len(FEATURES)
     for s in res["scores"].values():
         assert 0.0 <= s["roc_auc"] <= 1.0
         assert 0.0 <= s["pr_auc"] <= 1.0
+
+
+def test_score_visitors_probabilities(trained):
+    dataset, res = trained
+    scored = score_visitors(res, dataset)
+    assert len(scored) == len(dataset)
+    assert scored.index.equals(dataset.index)
+    assert scored["churn_probability"].between(0, 1).all()
+    # Original dataset must not be mutated.
+    assert "churn_probability" not in dataset.columns
+
+
+def test_predict_one_matches_batch(trained):
+    dataset, res = trained
+    scored = score_visitors(res, dataset)
+    row = dataset.iloc[7]
+    p = predict_one(res, {f: float(row[f]) for f in FEATURES})
+    assert p == pytest.approx(float(scored["churn_probability"].iloc[7]), abs=1e-12)
+
+
+def test_predict_one_rejects_bad_keys(trained):
+    _, res = trained
+    with pytest.raises(ValueError):
+        predict_one(res, {"num_events": 1.0})  # missing the rest
+    with pytest.raises(ValueError):
+        predict_one(res, {**{f: 1.0 for f in FEATURES}, "bogus": 2.0})
+
+
+def test_at_risk_filters_and_sorts():
+    scored = pd.DataFrame(
+        {
+            "num_carts": [0, 2, 0, 1],
+            "num_transactions": [0, 0, 1, 0],
+            "churn_probability": [0.99, 0.7, 0.9, 0.8],
+        },
+        index=pd.Index([1, 2, 3, 4], name="visitorid"),
+    )
+    risk = at_risk_visitors(scored, top_n=2)
+    # Visitor 1 excluded (no cart/txn despite highest probability);
+    # remaining sorted by probability desc, capped at top_n.
+    assert list(risk.index) == [3, 4]
 
 
 def test_churn_insight_identifies_drivers():
