@@ -141,6 +141,52 @@ def train_churn_models(
     }
 
 
+def best_model_name(result: dict) -> str:
+    """Name of the model with the highest held-out ROC-AUC."""
+    return max(result["scores"], key=lambda m: result["scores"][m]["roc_auc"])
+
+
+def score_visitors(result: dict, dataset: pd.DataFrame) -> pd.DataFrame:
+    """Churn probability for every visitor in the feature table.
+
+    Returns ``dataset`` (indexed by visitorid) plus a ``churn_probability``
+    column from the best model. No retraining — reuses the fitted models in
+    ``result``.
+    """
+    model = result["models"][best_model_name(result)]
+    X = dataset[list(FEATURES)].to_numpy(dtype=float)
+    scored = dataset.copy()
+    scored["churn_probability"] = model.predict_proba(X)[:, 1]
+    return scored
+
+
+def predict_one(result: dict, features: dict[str, float]) -> float:
+    """Churn probability for a single manual feature vector (what-if input).
+
+    ``features`` must supply exactly the keys in ``FEATURES``.
+    """
+    missing = set(FEATURES) - set(features)
+    unknown = set(features) - set(FEATURES)
+    if missing or unknown:
+        raise ValueError(
+            f"feature mismatch — missing: {sorted(missing)}, "
+            f"unknown: {sorted(unknown)}"
+        )
+    X = np.array([[float(features[f]) for f in FEATURES]])
+    model = result["models"][best_model_name(result)]
+    return float(model.predict_proba(X)[0, 1])
+
+
+def at_risk_visitors(scored: pd.DataFrame, top_n: int = 100) -> pd.DataFrame:
+    """High-intent visitors most likely to churn — the actionable list.
+
+    High intent = added to cart or purchased in the observation window.
+    Sorted by churn probability, descending; top ``top_n`` rows.
+    """
+    intent = scored[(scored["num_carts"] > 0) | (scored["num_transactions"] > 0)]
+    return intent.sort_values("churn_probability", ascending=False).head(top_n)
+
+
 def churn_insight(result: dict) -> str:
     """Plain-English summary from the standardized logistic coefficients."""
     coefs = result["coefs"]
@@ -178,11 +224,31 @@ def _print_report(df: pd.DataFrame) -> None:
 
     print("\nINSIGHT:", churn_insight(res))
 
+    print("\nScoring all visitors…")
+    scored = score_visitors(res, data)
+    risk = at_risk_visitors(scored, top_n=5)
+    print(f"  scored visitors        : {len(scored):,}")
+    print(f"  mean churn probability : {scored['churn_probability'].mean():.3f}")
+    print("  top 5 at-risk high-intent visitors:")
+    for vid, row in risk.iterrows():
+        print(
+            f"    visitor {vid:>9}  p(churn)={row['churn_probability']:.3f}  "
+            f"carts={int(row['num_carts'])}  txns={int(row['num_transactions'])}"
+        )
+
     # Internal-consistency checks.
     assert 0 < res["base_rate"] < 1, "degenerate label distribution"
     for s in res["scores"].values():
         assert 0.5 <= s["roc_auc"] <= 1.0, "AUC below chance — pipeline bug"
     assert not np.isnan(list(res["coefs"].values())).any()
+    assert scored["churn_probability"].between(0, 1).all()
+    assert len(scored) == len(data)
+    # predict_one must agree with batch scoring for the same feature vector.
+    first = data.iloc[0]
+    p_one = predict_one(res, {f: float(first[f]) for f in FEATURES})
+    p_batch = float(scored["churn_probability"].iloc[0])
+    assert abs(p_one - p_batch) < 1e-9, "predict_one disagrees with batch scoring"
+    assert (risk[["num_carts", "num_transactions"]].sum(axis=1) > 0).all()
     print("\nAll internal-consistency checks passed.")
 
 

@@ -14,7 +14,16 @@ from datetime import date
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.churn import churn_insight, make_churn_dataset, train_churn_models
+from src.churn import (
+    FEATURES,
+    at_risk_visitors,
+    best_model_name,
+    churn_insight,
+    make_churn_dataset,
+    predict_one,
+    score_visitors,
+    train_churn_models,
+)
 from src.data_load import load_events, sanity_report
 from src.metrics import FUNNEL_STAGES, cohort_retention, funnel, kpis
 
@@ -74,11 +83,23 @@ def get_sanity(start: date, end: date):
     return sanity_report(_filter(start, end))
 
 
-@st.cache_data(show_spinner="Training churn model…")
+@st.cache_data(show_spinner="Building churn dataset…")
+def get_churn_dataset():
+    """Feature/label table from the full dataset — the obs/horizon windows are
+    intrinsic to the churn definition and independent of the date filter."""
+    return make_churn_dataset(get_data())
+
+
+@st.cache_resource(show_spinner="Training churn model…")
 def get_churn():
-    """Train on the full dataset — the obs/horizon windows are intrinsic to the
-    churn definition and independent of the sidebar date filter."""
-    return train_churn_models(make_churn_dataset(get_data()))
+    """Fitted models + scores. cache_resource (not cache_data): sklearn models
+    should be kept as live objects, not pickled on every access."""
+    return train_churn_models(get_churn_dataset())
+
+
+@st.cache_data(show_spinner="Scoring visitors…")
+def get_scored():
+    return score_visitors(get_churn(), get_churn_dataset())
 
 
 # --- Insight helpers (plain English, computed from the data) --------------
@@ -226,12 +247,141 @@ def _date_range_picker() -> tuple[date, date]:
     return start, end
 
 
+def _prob_gauge(p: float) -> go.Figure:
+    """Churn probability as a gauge: red when at risk, blue when likely back."""
+    fig = go.Figure(
+        go.Indicator(
+            mode="gauge+number",
+            value=p * 100,
+            number={"suffix": "%", "font": {"size": 40}},
+            title={"text": "Churn probability", "font": {"size": 14}},
+            gauge={
+                "axis": {"range": [0, 100], "ticksuffix": "%"},
+                "bar": {"color": "#c0392b" if p >= 0.5 else "#2980b9"},
+                "threshold": {
+                    "line": {"color": "gray", "width": 2},
+                    "thickness": 0.75,
+                    "value": 50,
+                },
+            },
+        )
+    )
+    fig.update_layout(margin=dict(l=30, r=30, t=40, b=10), height=260)
+    return fig
+
+
+def _verdict(p: float) -> str:
+    if p >= 0.9:
+        return f"**{p:.0%}** likely to churn — almost certainly a one-time visitor."
+    if p >= 0.5:
+        return f"**{p:.0%}** likely to churn — at risk, worth a re-engagement nudge."
+    return f"Only **{p:.0%}** churn risk — this visitor is likely to return."
+
+
+def _render_lookup() -> None:
+    scored = get_scored()
+    samples = ", ".join(str(v) for v in scored.index[:5])
+    vid = st.number_input(
+        "Visitor ID (from the first-30-days window)",
+        min_value=0,
+        value=int(scored.index[0]),
+        step=1,
+    )
+    st.caption(f"Try e.g.: {samples}")
+    if vid not in scored.index:
+        st.warning(
+            "That visitor isn't in the observation window. Pick one of the "
+            "sample IDs above."
+        )
+        return
+
+    row = scored.loc[vid]
+    left, right = st.columns([1, 1])
+    with left:
+        st.plotly_chart(_prob_gauge(row["churn_probability"]), use_container_width=True)
+        st.markdown(_verdict(row["churn_probability"]))
+    with right:
+        feats = row[list(FEATURES)].rename("value").to_frame()
+        feats.index = [f.replace("_", " ") for f in feats.index]
+        st.dataframe(feats.style.format("{:.2f}"), use_container_width=True)
+
+
+def _render_whatif(res: dict) -> None:
+    st.caption(
+        "Drag the sliders to describe a visitor's first-month behavior; the "
+        "model predicts their churn risk live."
+    )
+    left, right = st.columns([1, 1])
+    with left:
+        num_events = st.slider("Events", 1, 60, 5)
+        active_days = st.slider("Active days", 1, 30, 1)
+        items = st.slider("Distinct items viewed", 1, 40, 3)
+        carts = st.slider("Add-to-carts", 0, 10, 0)
+        txns = st.slider("Purchases", 0, 5, 0)
+        recency = st.slider("Days inactive at window end", 0, 30, 15)
+        tenure = st.slider("Days between first & last visit", 0, 30, 0)
+
+    features = {
+        "num_events": num_events,
+        "num_active_days": active_days,
+        "num_distinct_items": items,
+        "num_views": max(num_events - carts - txns, 0),
+        "num_carts": carts,
+        "num_transactions": txns,
+        "recency_days": recency,
+        "tenure_days": tenure,
+        "events_per_active_day": num_events / active_days,
+    }
+    p = predict_one(res, features)
+    with right:
+        st.plotly_chart(_prob_gauge(p), use_container_width=True)
+        st.markdown(_verdict(p))
+
+
+def _render_at_risk() -> None:
+    scored = get_scored()
+    carted = scored[scored["num_carts"] > 0]
+    carted_churn_share = (carted["churn_probability"] >= 0.5).mean()
+
+    top_n = st.slider("List size", 25, 500, 100, step=25)
+    risk = at_risk_visitors(scored, top_n=top_n)
+    view = risk[
+        [
+            "churn_probability",
+            "num_carts",
+            "num_transactions",
+            "num_events",
+            "num_active_days",
+            "recency_days",
+        ]
+    ].copy()
+    st.dataframe(
+        view.style.format(
+            {"churn_probability": "{:.1%}", "recency_days": "{:.1f}"}
+        ),
+        use_container_width=True,
+        height=340,
+    )
+    st.download_button(
+        "Download as CSV",
+        view.to_csv().encode("utf-8"),
+        file_name="at_risk_visitors.csv",
+        mime="text/csv",
+    )
+    st.info(
+        f"**{carted_churn_share:.0%}** of the {len(carted):,} visitors who added "
+        "to cart in their first month are predicted not to return — these are "
+        "the highest-value re-engagement targets: they showed purchase intent, "
+        "then went quiet."
+    )
+
+
 def render_churn() -> None:
     res = get_churn()
     st.subheader("Churn (Return-Prediction) Model")
 
     scores = res["scores"]
-    best = max(scores, key=lambda m: scores[m]["roc_auc"])
+    best = best_model_name(res)
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Visitors modeled", f"{res['n_visitors']:,}")
     c2.metric("Churn base rate", f"{res['base_rate']:.1%}")
@@ -274,6 +424,18 @@ def render_churn() -> None:
         "of visitors churn — ROC-AUC is the honest headline. Uses the full "
         "dataset; the sidebar date filter does not apply here."
     )
+
+    st.divider()
+    st.subheader("Predict")
+    lookup, whatif, risk = st.tabs(
+        ["🔍 Visitor lookup", "🎛 What-if", "⚠️ At-risk visitors"]
+    )
+    with lookup:
+        _render_lookup()
+    with whatif:
+        _render_whatif(res)
+    with risk:
+        _render_at_risk()
 
 
 def main() -> None:
