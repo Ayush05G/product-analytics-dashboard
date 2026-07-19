@@ -125,8 +125,10 @@ def load_events(path: str | Path = DEFAULT_PATH) -> pd.DataFrame:
     if bad:
         raise ValueError(f"unexpected event types: {sorted(bad)}")
 
-    df["visitorid"] = df["visitorid"].astype("int64")
-    df["itemid"] = df["itemid"].astype("int64")
+    # int32 halves the RAM of the two widest columns across 2.7M rows (ids max
+    # out near 1.4M / 466k — far inside int32) — matters on the 1 GB deploy tier.
+    df["visitorid"] = df["visitorid"].astype("int32")
+    df["itemid"] = df["itemid"].astype("int32")
     df["event"] = df["event"].astype("category")
     if "transactionid" in df.columns:
         # Only set on transaction rows; keep it nullable.

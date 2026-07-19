@@ -25,7 +25,14 @@ from src.churn import (
     train_churn_models,
 )
 from src.data_load import load_events, sanity_report
-from src.metrics import FUNNEL_STAGES, cohort_retention, funnel, kpis
+from src.metrics import (
+    FUNNEL_STAGES,
+    cohort_retention,
+    daily_active,
+    funnel,
+    kpis,
+    top_items,
+)
 
 st.set_page_config(page_title="Product Analytics Dashboard", layout="wide")
 
@@ -81,6 +88,16 @@ def get_cohorts(start: date, end: date):
 @st.cache_data
 def get_sanity(start: date, end: date):
     return sanity_report(_filter(start, end))
+
+
+@st.cache_data(show_spinner="Computing activity trend…")
+def get_daily_active(start: date, end: date):
+    return daily_active(_filter(start, end))
+
+
+@st.cache_data(show_spinner="Ranking items…")
+def get_top_items(start: date, end: date, n: int = 20):
+    return top_items(_filter(start, end), n=n)
 
 
 @st.cache_data(show_spinner="Building churn dataset…")
@@ -163,6 +180,25 @@ def render_overview(start: date, end: date) -> None:
     c5.metric("Conversion rate", f"{k['conversion_rate']:.2%}")
     c6.metric("Repeat-visitor rate", f"{k['repeat_visitor_rate']:.1%}")
 
+    da = get_daily_active(start, end)
+    fig = go.Figure(
+        go.Scatter(
+            x=da.index,
+            y=da.values,
+            mode="lines",
+            fill="tozeroy",
+            line=dict(color="#2980b9", width=2),
+            hovertemplate="%{x|%b %d, %Y}: %{y:,} visitors<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        margin=dict(l=10, r=10, t=30, b=10),
+        height=280,
+        title="Daily active visitors",
+        yaxis_title="Distinct visitors",
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
     st.info(kpi_insight(k))
     st.caption(
         f"{s['total_rows']:,} events · {s['date_min']:%b %d, %Y} – "
@@ -216,10 +252,30 @@ def render_retention(start: date, end: date) -> None:
     )
     st.plotly_chart(fig, use_container_width=True)
 
+    decay = c.mean()  # mean retention per week-offset across cohorts (skips NaN)
+    fig2 = go.Figure(
+        go.Scatter(
+            x=decay.index,
+            y=decay.values,
+            mode="lines+markers",
+            line=dict(color="#2980b9", width=2),
+            hovertemplate="Week %{x}: %{y:.1%} retained<extra></extra>",
+        )
+    )
+    fig2.update_layout(
+        margin=dict(l=10, r=10, t=30, b=10),
+        height=280,
+        title="Average retention decay (mean across cohorts)",
+        xaxis_title="Weeks since first visit",
+        yaxis=dict(title="Retained", tickformat=".0%"),
+    )
+    st.plotly_chart(fig2, use_container_width=True)
+
     st.info(cohort_insight(c))
     st.caption(
         "Each row is the week a visitor first appeared; cells show the share "
-        "active again N weeks later (any event = retained)."
+        "active again N weeks later (any event = retained). The decay curve "
+        "averages each column over the cohorts that could be observed that far."
     )
 
 
@@ -245,6 +301,64 @@ def _date_range_picker() -> tuple[date, date]:
         start, end = end, start
     st.sidebar.caption(f"Showing {start:%b %d, %Y} – {end:%b %d, %Y}")
     return start, end
+
+
+def items_insight(items) -> str:
+    """Call out the volume leader and the best-converting high-traffic item."""
+    conv = items["view_to_purchase"].dropna()
+    if conv.empty:
+        return (
+            "No item has enough views in this range for a reliable "
+            "view→purchase conversion rate."
+        )
+    top_id, top = items.index[0], items.iloc[0]
+    best_id = conv.idxmax()
+    best = items.loc[best_id]
+    return (
+        f"Item **{top_id}** leads on volume with **{int(top['purchases'])}** "
+        f"purchases from {int(top['views']):,} views, while item **{best_id}** "
+        f"converts best — **{conv.max():.1%}** of its {int(best['views']):,} "
+        "views end in a purchase."
+    )
+
+
+def render_items(start: date, end: date) -> None:
+    items = get_top_items(start, end)
+    st.subheader("Top Items")
+
+    if items.empty:
+        st.warning("No item activity in the selected date range.")
+        return
+
+    fig = go.Figure(
+        go.Bar(
+            x=[str(i) for i in items.index],
+            y=items["purchases"],
+            marker_color="#2980b9",
+            hovertemplate="Item %{x}<br>%{y} purchases<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        margin=dict(l=10, r=10, t=30, b=10),
+        height=320,
+        title="Top items by purchases",
+        xaxis=dict(title="Item ID", type="category"),
+        yaxis_title="Purchases",
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.dataframe(
+        items.style.format(
+            {"view_to_purchase": "{:.2%}", "views": "{:,}"}, na_rep="—"
+        ),
+        use_container_width=True,
+        height=340,
+    )
+    st.info(items_insight(items))
+    st.caption(
+        "Event counts per item; view→purchase conversion is only reported for "
+        "items with ≥50 views so small samples can't top the ranking."
+    )
 
 
 def _prob_gauge(p: float) -> go.Figure:
@@ -448,8 +562,8 @@ def main() -> None:
         st.warning("No events in the selected date range. Widen the range.")
         return
 
-    overview, funnel_tab, retention_tab, churn_tab = st.tabs(
-        ["Overview", "Funnel", "Retention", "Churn"]
+    overview, funnel_tab, retention_tab, items_tab, churn_tab = st.tabs(
+        ["Overview", "Funnel", "Retention", "Items", "Churn"]
     )
     with overview:
         render_overview(start, end)
@@ -457,6 +571,8 @@ def main() -> None:
         render_funnel(start, end)
     with retention_tab:
         render_retention(start, end)
+    with items_tab:
+        render_items(start, end)
     with churn_tab:
         render_churn()
 

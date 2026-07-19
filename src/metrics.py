@@ -149,6 +149,38 @@ def kpis(df: pd.DataFrame) -> dict[str, float | int]:
     }
 
 
+def daily_active(df: pd.DataFrame) -> pd.Series:
+    """Distinct active visitors per calendar day (UTC), chronological."""
+    return df.groupby(df["timestamp"].dt.floor("D"))["visitorid"].nunique()
+
+
+def top_items(df: pd.DataFrame, n: int = 20, min_views: int = 50) -> pd.DataFrame:
+    """Per-item event counts and view->purchase conversion, top ``n`` by purchases.
+
+    Columns: ``views``, ``carts``, ``purchases`` (event counts), and
+    ``view_to_purchase`` = purchases / views — reported only for items with at
+    least ``min_views`` views (NaN below that), so tiny-sample items can't top
+    the conversion ranking.
+    """
+    counts = (
+        df.groupby(["itemid", "event"], observed=True)
+        .size()
+        .unstack("event", fill_value=0)
+    )
+    for stage in FUNNEL_STAGES:
+        if stage not in counts.columns:
+            counts[stage] = 0
+    out = counts.rename(
+        columns={"view": "views", "addtocart": "carts", "transaction": "purchases"}
+    )[["views", "carts", "purchases"]].astype(int)
+    out["view_to_purchase"] = np.where(
+        out["views"] >= min_views,
+        out["purchases"] / out["views"].clip(lower=1),
+        np.nan,
+    )
+    return out.sort_values(["purchases", "views"], ascending=False).head(n)
+
+
 def _print_verification(df: pd.DataFrame) -> None:
     """Run all three metrics on real data and print numbers to eyeball,
     with internal-consistency assertions."""
@@ -183,6 +215,22 @@ def _print_verification(df: pd.DataFrame) -> None:
         print(shown.to_string())
     # Week-0 retention is 100% by construction for every cohort.
     assert (c[0] == 1.0).all(), "week-0 retention must be 100%"
+
+    print("\n=== TOP ITEMS (by purchases) ===")
+    items = top_items(df, n=5)
+    for itemid, r in items.iterrows():
+        conv = f"{r['view_to_purchase']:.2%}" if pd.notna(r["view_to_purchase"]) else "n/a"
+        print(
+            f"  item {itemid:>7}  views={int(r['views']):>6,}  "
+            f"carts={int(r['carts']):>4}  purchases={int(r['purchases']):>4}  "
+            f"view->purchase {conv}"
+        )
+    da = daily_active(df)
+    print(f"\nDaily active visitors: {len(da)} days, mean {da.mean():,.0f}")
+    assert da.sum() >= df["visitorid"].nunique(), "DAU-days must cover visitors"
+    assert int(items["purchases"].sum()) > 0, "top items should include purchases"
+    conv = items["view_to_purchase"].dropna()
+    assert (conv >= 0).all(), "conversion cannot be negative"
     print("\nAll internal-consistency checks passed.")
 
 
