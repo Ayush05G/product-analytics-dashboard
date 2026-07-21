@@ -138,7 +138,7 @@ python scripts/funnel_analysis.py   # funnel + segment cuts -> results/funnel_nu
 experiments to fix it*. Every figure in it is computed by
 `scripts/funnel_analysis.py` — none are illustrative.
 
-Headline: **2.69%** of viewers add to cart, **28.04%** of cart-adders buy
+Headline: **2.45%** of viewers add to cart, **28.04%** of cart-adders buy
 (**0.83%** end to end). The worst-converting pocket is **new visitors with
 single-item carts at 23.86%** — which is also 65% of all cart activity.
 

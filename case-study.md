@@ -12,7 +12,7 @@
 
 ## TL;DR (Executive summary)
 
-The funnel loses **97.3%** of users at the **view → add-to-cart** step, and a
+The funnel loses **97.6%** of users at the **view → add-to-cart** step, and a
 further **72.0%** of those who do add to cart never purchase. Only **0.83%** of
 viewers buy. But the two drops are not equally actionable: the view→cart drop is
 dominated by low-intent browsing, while the cart→purchase drop happens *after*
@@ -51,16 +51,18 @@ orders**.
 
 **The funnel (visitor-level):**
 
-| Stage | Visitors | Step conversion | Cumulative |
-|---|---:|---:|---:|
-| Viewed a product | 1,404,179 | — | 100% |
-| Added to cart | 37,722 | 2.69% | 2.69% |
-| Purchased | 11,719 | 28.04% * | 0.83% |
+| Stage | Visitors | Step conv. (stage-count) | Step conv. (progression) | Cumulative |
+|---|---:|---:|---:|---:|
+| Viewed a product | 1,404,179 | — | — | 100% |
+| Added to cart | 37,722 | 2.69% | **2.45%** | 2.69% |
+| Purchased | 11,719 | 31.07% | **28.04%** | 0.83% |
 
-\* Not 11,719 ÷ 37,722. The step conversion counts only the 10,576 buyers who
-actually passed through a cart — see the measurement note below.
+Two rates per step, because they answer different questions — see the
+measurement note below. **This document uses the progression column
+throughout**, since that is the rate an intervention on a step can actually
+move.
 
-The shape: view→cart is a brutally steep 2.69%, while cart→purchase is a
+The shape: view→cart is a brutally steep 2.45%, while cart→purchase is a
 comparatively healthy 28.04%. Nearly all raw loss is at the top; nearly all
 *recoverable intent* is at the bottom.
 
@@ -69,15 +71,30 @@ progressed*, not raw events — otherwise a single user viewing 20 items inflate
 the top of the funnel and distorts the conversion rate. (This is itself a small
 signal of rigor worth stating explicitly.)
 
-**One measurement subtlety worth being explicit about.** 1,143 of the 11,719
-buyers (9.8%) have *no recorded add-to-cart event at all* — either a tracking
-gap or a purchase path that skips the cart. Dividing all buyers by cart-adders
-would put those people in the numerator when they were never in the
-denominator, yielding an inflated 31.07%. The 28.04% above is
-progression-based: buyers who *also* added to cart (10,576) ÷ cart-adders
-(37,722). Every cart→purchase figure in this document uses that definition.
-Similarly, 3,401 visitors (0.24%) have no `view` event, which is why
-viewer-denominated and all-visitor-denominated conversion differ slightly.
+**One measurement subtlety worth being explicit about — it affects both steps.**
+Not everyone at a stage passed through the stage recorded before it:
+
+- **1,143 of 11,719 buyers (9.8%) have no add-to-cart event at all.**
+- **3,321 of 37,722 cart-adders (8.8%) have no view event at all.**
+
+Either a tracking gap, or a real path that skips the step (a direct link into a
+cart, a re-order). Dividing *all* buyers by cart-adders puts the first group in
+the numerator when they were never in the denominator, inflating cart→purchase
+to 31.07%; the same arithmetic inflates view→cart to 2.69%. The progression
+column instead counts only visitors who reached **both** the stage and the one
+before it — 10,576 buyers who also carted (28.04%), and 34,401 cart-adders who
+also viewed (2.45%).
+
+Worth stating plainly: an earlier draft of this document reported the gap as
+"3,401 visitors (0.24%) have no view event." That is true of the visitor base
+but misleading about the funnel — measured against the population the step
+actually operates on, cart-adders, it is 8.8%, not 0.24%.
+
+**Nothing downstream in this document changes as a result.** The experiment
+sizing, the segment cuts, and the revenue translation are all built on
+cart→purchase and the cart-adder population, which the view-step gap does not
+touch. The correction matters for honesty and for anyone reusing these figures,
+not for the recommendation.
 
 ---
 
@@ -307,9 +324,9 @@ the evidence honestly stops. Anyone with real AOV can complete the arithmetic in
 one step.
 
 **The honest ceiling.** Even a +20% cart-step win moves overall view→purchase
-from 0.83% to roughly 0.99% — the 2.69% view→cart rate caps total funnel
+from 0.83% to roughly 0.99% — the 2.45% view→cart rate caps total funnel
 conversion no matter how good checkout gets. Cart-step wins are real but
-bounded. The structurally bigger prize is top-of-funnel *quality*: 97.3% of
+bounded. The structurally bigger prize is top-of-funnel *quality*: 97.6% of
 viewers never cart, and shifting that is a traffic-and-discovery problem, not a
 checkout one.
 
@@ -336,7 +353,7 @@ checkout one.
 **Assumptions:** add-to-cart reliably signals intent; the 137-day window
 (May–Sep 2015) is representative and not seasonally distorted. Two assumptions
 are known to be imperfect and are handled explicitly rather than waved through:
-9.8% of buyers have no cart event and 0.24% of visitors no view event, so event
+9.8% of buyers have no cart event and 8.8% of cart-adders no view event, so event
 definitions do *not* map perfectly onto funnel stages (§1); and "cart" is
 approximated by visitor-day because the data has no session or cart ID, which
 will merge genuinely separate same-day visits into one cart.
@@ -360,7 +377,7 @@ weeks; (2) based on the result, proceed to Experiment 2 or iterate on the
 first-time-buyer thesis; (3) instrument checkout and payment steps — H3 cannot
 even be ranked until then, and the current data cannot distinguish *where* in
 checkout new visitors drop; (4) revisit top-of-funnel traffic quality as the
-larger structural lever, given the 2.69% ceiling.
+larger structural lever, given the 2.45% ceiling.
 
 ---
 
@@ -377,7 +394,8 @@ Definitions used here, stated so they can be audited:
 - **Funnel** — visitor-level progression through view → add-to-cart →
   transaction, counting distinct people per stage, not events.
 - **Cart→purchase** — progression-based: buyers who *also* carted ÷ cart-adders
-  (28.04%). The naive all-buyers ÷ cart-adders ratio reads 31.07%.
+  (28.04%). The naive all-buyers ÷ cart-adders ratio reads 31.07%. The same
+  correction applies to view→cart: 2.45% progressed vs 2.69% naive.
 - **New vs returning** — judged at first-cart time (prior-day activity), not
   over the whole window, to avoid lookahead bias.
 - **Cart size** — distinct items per visitor-day; no session/cart ID exists.

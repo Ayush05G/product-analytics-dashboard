@@ -50,10 +50,17 @@ def funnel_summary(df: pd.DataFrame) -> dict[str, float | int]:
     # those buyers in the numerator while they were never in the denominator,
     # which overstates the step. Use progression — buyers who *also* carted —
     # as the primary cart->purchase rate, and keep the naive one for contrast.
+    view_set = set(df.loc[df["event"] == "view", "visitorid"])
     cart_set = set(df.loc[df["event"] == "addtocart", "visitorid"])
     buyer_set = set(df.loc[df["event"] == "transaction", "visitorid"])
     buyers_who_carted = len(buyer_set & cart_set)
     buyers_never_carted = len(buyer_set - cart_set)
+
+    # The view -> addtocart step has the same gap: cart-adders with no recorded
+    # view. Report it symmetrically so the case study can cite either step
+    # without switching definitions mid-funnel.
+    carters_who_viewed = len(cart_set & view_set)
+    carters_never_viewed = len(cart_set - view_set)
 
     txn_rows = int((df["event"] == "transaction").sum())
     orders = (
@@ -71,7 +78,10 @@ def funnel_summary(df: pd.DataFrame) -> dict[str, float | int]:
         "buyers": buyers,
         "buyers_who_carted": buyers_who_carted,
         "buyers_never_carted": buyers_never_carted,
-        "view_to_cart": carters / viewers,
+        "carters_who_viewed": carters_who_viewed,
+        "carters_never_viewed": carters_never_viewed,
+        "view_to_cart": carters_who_viewed / viewers,  # primary (progression)
+        "view_to_cart_naive": carters / viewers,
         "cart_to_purchase": buyers_who_carted / carters,  # primary (progression)
         "cart_to_purchase_naive": buyers / carters,
         "view_to_purchase": buyers / viewers,
@@ -301,24 +311,35 @@ def build_report(df: pd.DataFrame) -> str:
     add("")
     add("Counts distinct *people* who reached each stage, not raw events.")
     add("")
-    add("| Stage | Visitors | Step conversion | Cumulative |")
-    add("|---|---:|---:|---:|")
-    add(f"| Viewed a product | {fs['viewers']:,} | — | 100% |")
-    add(f"| Added to cart | {fs['carters']:,} | {_pct(fs['view_to_cart'])} | "
-        f"{_pct(fs['view_to_cart'])} |")
-    add(f"| Purchased | {fs['buyers']:,} | {_pct(fs['cart_to_purchase'])} | "
-        f"{_pct(fs['view_to_purchase'])} |")
+    add("| Stage | Visitors | Step conv. (stage-count) | Step conv. (progression) "
+        "| Cumulative |")
+    add("|---|---:|---:|---:|---:|")
+    add(f"| Viewed a product | {fs['viewers']:,} | — | — | 100% |")
+    add(f"| Added to cart | {fs['carters']:,} | {_pct(fs['view_to_cart_naive'])} "
+        f"| **{_pct(fs['view_to_cart'])}** | {_pct(fs['view_to_cart_naive'])} |")
+    add(f"| Purchased | {fs['buyers']:,} | {_pct(fs['cart_to_purchase_naive'])} "
+        f"| **{_pct(fs['cart_to_purchase'])}** | {_pct(fs['view_to_purchase'])} |")
     add("")
-    add("**Cart→purchase caveat (matters — this is the headline metric).** "
-        f"{fs['buyers_never_carted']:,} of {fs['buyers']:,} buyers "
-        f"({fs['buyers_never_carted'] / fs['buyers']:.1%}) have no recorded "
-        "add-to-cart event at all. Dividing *all* buyers by cart-adders counts "
-        "them in the numerator while they were never in the denominator, giving "
-        f"an inflated **{_pct(fs['cart_to_purchase_naive'])}**. The step "
-        "conversion quoted above is progression-based — buyers who *also* "
-        f"carted ({fs['buyers_who_carted']:,}) over cart-adders = "
-        f"**{_pct(fs['cart_to_purchase'])}** — and is the figure the case study "
-        "uses. (`metrics.funnel()` reports both: `step_conversion` for the "
+    add("**Step-conversion caveat — it applies to BOTH steps.** Not everyone at "
+        "a stage passed through the stage recorded before it:")
+    add("")
+    add(f"- {fs['buyers_never_carted']:,} of {fs['buyers']:,} buyers "
+        f"({fs['buyers_never_carted'] / fs['buyers']:.1%}) have no `addtocart` "
+        "event at all.")
+    add(f"- {fs['carters_never_viewed']:,} of {fs['carters']:,} cart-adders "
+        f"({fs['carters_never_viewed'] / fs['carters']:.1%}) have no `view` "
+        "event at all.")
+    add("")
+    add("Dividing all of a stage by the previous stage counts those people in "
+        "the numerator while they were never in the denominator, inflating "
+        f"cart→purchase to **{_pct(fs['cart_to_purchase_naive'])}** and "
+        f"view→cart to **{_pct(fs['view_to_cart_naive'])}**. The progression "
+        "column counts only visitors who reached both the stage and the one "
+        f"before it — {fs['buyers_who_carted']:,} buyers who also carted "
+        f"(**{_pct(fs['cart_to_purchase'])}**) and {fs['carters_who_viewed']:,} "
+        f"cart-adders who also viewed (**{_pct(fs['view_to_cart'])}**). The case "
+        "study uses the progression column throughout. "
+        "(`metrics.funnel()` reports both: `step_conversion` for the "
         "stage-count view and `step_conversion_progressed` for this one. The "
         "naive figure is not wrong, it just answers a different question.)")
     add("")
@@ -445,6 +466,20 @@ def _verify(df: pd.DataFrame) -> None:
     assert abs(
         f.loc["transaction", "step_conversion_progressed"] - fs["cart_to_purchase"]
     ) < 1e-12, "metrics.funnel() progression rate disagrees with this script's"
+    assert int(f.loc["addtocart", "visitors_progressed"]) == fs["carters_who_viewed"], (
+        "metrics.funnel() view-step progression count disagrees with this script's"
+    )
+    assert abs(
+        f.loc["addtocart", "step_conversion_progressed"] - fs["view_to_cart"]
+    ) < 1e-12, "metrics.funnel() view-step progression rate disagrees with this script's"
+
+    # Both steps: the two populations must partition the stage exactly.
+    assert fs["carters_who_viewed"] + fs["carters_never_viewed"] == fs["carters"], (
+        "viewed/never-viewed cart-adders do not sum to the cart stage"
+    )
+    assert fs["view_to_cart"] <= fs["view_to_cart_naive"], (
+        "view-step progression rate cannot exceed the naive rate"
+    )
 
     nvr = new_vs_returning(df)
     assert int(nvr["cart_visitors"].sum()) == fs["carters"], (
