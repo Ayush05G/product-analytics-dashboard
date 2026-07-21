@@ -428,13 +428,3 @@ Definitions used here, stated so they can be audited:
 The script asserts internal consistency before reporting: funnel monotonicity,
 segments summing to stage totals, all rates in [0,1], 7-day conversion ≥
 same-day, and reconciliation of the two independent conversion-rate paths.
-
----
-
-### How to present this in an interview (delete before publishing)
-- Lead with the *prioritization insight* (biggest drop ≠ most fixable drop) —
-  that's the part that signals judgment.
-- Be ready to defend the RICE scores and the choice of primary vs guardrail metrics.
-- Know your sample-size logic well enough to explain *why* low baseline
-  conversion needs more traffic.
-- Tie it back to the dashboard: "the tool found it, this is how I'd act on it."
