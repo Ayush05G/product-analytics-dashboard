@@ -282,6 +282,25 @@ over-read.
 - **Hypothesis:** Clearer add-to-cart affordance / social proof on the product
   page lifts view→cart for the *addressable* segment.
 - Kept deliberately smaller — Drop A is the secondary bet.
+- **Power is not the constraint here.** Unlike the cart-step tests, this one
+  draws on ~1.4M viewers, so it can resolve much smaller effects in the same
+  window. The 2.45% baseline is low, which raises the required sample, but
+  traffic at this stage is abundant enough to absorb it.
+
+**Running Experiment 3 alongside Experiment 1 — what it does and doesn't do.**
+Randomised independently, Exp 3 does *not* bias Exp 1: its exposure is balanced
+across Exp 1's arms in expectation, so the guest-checkout comparison stays
+internally valid. Two real effects remain, and both should be pre-declared:
+1. **Dilution.** A successful view→cart nudge pulls *marginal, lower-intent*
+   users into the cart stage — exactly the population that converts worst
+   (§2). Exp 1's measured lift can shrink even if the checkout change is
+   working, because the mix of who reaches checkout has shifted.
+2. **Interaction.** The two changes may not be additive. Log Exp 3 assignment
+   as a covariate and test the interaction rather than assuming independence.
+
+Given the cart step already needs ~4.5 weeks at the minimum detectable effect,
+the cleaner sequencing is to run Exp 1 alone first and start Exp 3 after it
+reads out. "Parallel" is a scheduling convenience, not a free lunch.
 
 **Cross-experiment discipline:** watch for novelty effects (early bumps that
 fade), don't peek-and-stop (fixed horizon or a proper sequential test), and
@@ -389,6 +408,12 @@ reuses the metric layer of my **Product Analytics Dashboard** project (pandas +
 Streamlit). Full output — including segment definitions, the 7-day robustness
 variant, sample-size table, and cross-checks — is in
 **`results/funnel_numbers.md`**. Reproduce with `python scripts/funnel_analysis.py`.
+
+- **Live dashboard:** https://p-analytics-dashboard.streamlit.app/
+- **Repo:** https://github.com/Ayush05G/product-analytics-dashboard
+
+The dashboard's Funnel tab shows the same progression rates (2.45% and 28.04%)
+with the tracking-gap caveat, so the tool and this document agree on screen.
 
 Definitions used here, stated so they can be audited:
 - **Funnel** — visitor-level progression through view → add-to-cart →
