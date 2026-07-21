@@ -137,6 +137,41 @@ def funnel_insight(f) -> str:
     )
 
 
+def progression_note(f) -> str | None:
+    """Explain the gap between the stage-count and progression rates.
+
+    Both steps can have a gap (in the full RetailRocket window, 8.8% of
+    cart-adders have no recorded view and 9.8% of buyers no recorded cart), so
+    rank by the gap as a *share* of the stage rather than by raw count — the
+    absolute counts are not comparable across stages of very different size.
+
+    Returns None when no stage has a meaningful gap (every visitor at each
+    stage also reached the one before it), so we don't show a caveat about
+    a discrepancy that isn't there.
+    """
+    steps = f.iloc[1:]
+    gaps = (steps["visitors"] - steps["visitors_progressed"]) / steps["visitors"]
+    if not (gaps > 0).any():
+        return None
+
+    row = steps.loc[gaps.idxmax()]
+    stage = row["stage"]
+    prev_stage = FUNNEL_STAGES[FUNNEL_STAGES.index(stage) - 1]
+    skipped = int(row["visitors"] - row["visitors_progressed"])
+    total = int(row["visitors"])
+    return (
+        f"**{skipped:,} of {total:,}** visitors who reached *{stage}* "
+        f"({skipped / total:.1%}) have no recorded *{prev_stage}* event — a "
+        f"tracking gap, or a path that skips that step. Counting all of them "
+        f"gives a **{row['step_conversion']:.2%}** {prev_stage} → {stage} rate, "
+        f"but they were never in the denominator. Measured as an actual "
+        f"progression — visitors who did *both* — the step is "
+        f"**{row['step_conversion_progressed']:.2%}**. Use the progression "
+        f"figure when sizing an experiment on this step: it's the rate a change "
+        f"there can actually move."
+    )
+
+
 def kpi_insight(k) -> str:
     return (
         f"Acquisition is broad — about **{k['mau']:,.0f}** monthly active "
@@ -221,6 +256,26 @@ def render_funnel(start: date, end: date) -> None:
     st.plotly_chart(fig, use_container_width=True)
 
     st.info(funnel_insight(f))
+
+    steps = f.iloc[1:]
+    cols = st.columns(len(steps))
+    for col, (_, r) in zip(cols, steps.iterrows()):
+        prev_stage = FUNNEL_STAGES[FUNNEL_STAGES.index(r["stage"]) - 1]
+        col.metric(
+            f"{prev_stage.capitalize()} → {r['stage'].capitalize()}",
+            f"{r['step_conversion_progressed']:.2%}",
+            help=(
+                "Progression rate: visitors who reached this stage *and* the "
+                "previous one, over previous-stage visitors. The stage-count "
+                f"rate (all visitors at this stage / previous stage) is "
+                f"{r['step_conversion']:.2%}."
+            ),
+        )
+
+    note = progression_note(f)
+    if note:
+        st.warning(note)
+
     st.caption(
         "Visitor-level: a visitor counts at a stage if they performed that "
         "event at least once (not strictly per-session ordered)."

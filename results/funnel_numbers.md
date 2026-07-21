@@ -23,7 +23,7 @@ Counts distinct *people* who reached each stage, not raw events.
 | Added to cart | 37,722 | 2.69% | 2.69% |
 | Purchased | 11,719 | 28.04% | 0.83% |
 
-**Cart→purchase caveat (matters — this is the headline metric).** 1,143 of 11,719 buyers (9.8%) have no recorded add-to-cart event at all. Dividing *all* buyers by cart-adders counts them in the numerator while they were never in the denominator, giving an inflated **31.07%**. The step conversion quoted above is progression-based — buyers who *also* carted (10,576) over cart-adders = **28.04%** — and is the figure the case study uses. (The dashboard's `metrics.funnel()` reports the naive variant; it is not wrong for a stage-count view, just a different question.)
+**Cart→purchase caveat (matters — this is the headline metric).** 1,143 of 11,719 buyers (9.8%) have no recorded add-to-cart event at all. Dividing *all* buyers by cart-adders counts them in the numerator while they were never in the denominator, giving an inflated **31.07%**. The step conversion quoted above is progression-based — buyers who *also* carted (10,576) over cart-adders = **28.04%** — and is the figure the case study uses. (`metrics.funnel()` reports both: `step_conversion` for the stage-count view and `step_conversion_progressed` for this one. The naive figure is not wrong, it just answers a different question.)
 
 - Visitors with no recorded `view` event: 3,401 (0.24%) — why `view→purchase` (viewer-denominated) and `kpis.conversion_rate` (all-visitor-denominated) differ slightly.
 - Transaction event rows over the period: **22,457**

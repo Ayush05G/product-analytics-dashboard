@@ -318,8 +318,9 @@ def build_report(df: pd.DataFrame) -> str:
         "conversion quoted above is progression-based — buyers who *also* "
         f"carted ({fs['buyers_who_carted']:,}) over cart-adders = "
         f"**{_pct(fs['cart_to_purchase'])}** — and is the figure the case study "
-        "uses. (The dashboard's `metrics.funnel()` reports the naive variant; "
-        "it is not wrong for a stage-count view, just a different question.)")
+        "uses. (`metrics.funnel()` reports both: `step_conversion` for the "
+        "stage-count view and `step_conversion_progressed` for this one. The "
+        "naive figure is not wrong, it just answers a different question.)")
     add("")
     add(f"- Visitors with no recorded `view` event: "
         f"{rep['unique_visitors'] - fs['viewers']:,} "
@@ -432,6 +433,18 @@ def _verify(df: pd.DataFrame) -> None:
     assert fs["cart_to_purchase"] <= fs["cart_to_purchase_naive"], (
         "progression rate cannot exceed the naive rate"
     )
+
+    # This script derives progression independently (set intersection above);
+    # metrics.funnel() now derives it too. Keep both and cross-check them —
+    # if they ever disagree, one of the two is wrong and the case study's
+    # headline number is in doubt.
+    f = funnel(df).set_index("stage")
+    assert int(f.loc["transaction", "visitors_progressed"]) == fs["buyers_who_carted"], (
+        "metrics.funnel() progression count disagrees with this script's"
+    )
+    assert abs(
+        f.loc["transaction", "step_conversion_progressed"] - fs["cart_to_purchase"]
+    ) < 1e-12, "metrics.funnel() progression rate disagrees with this script's"
 
     nvr = new_vs_returning(df)
     assert int(nvr["cart_visitors"].sum()) == fs["carters"], (

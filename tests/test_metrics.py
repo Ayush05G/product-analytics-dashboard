@@ -42,6 +42,90 @@ def test_funnel_counts_and_rates(events):
     assert np.isnan(f.loc["view", "step_conversion"])
 
 
+@pytest.fixture
+def events_with_cartless_buyer() -> pd.DataFrame:
+    """8 events, 4 visitors — includes a buyer who never added to cart.
+
+      v1: view + cart + transaction   (carted, then bought)
+      v2: view + cart                 (carted, no purchase)
+      v3: view + transaction          (bought WITHOUT ever carting)
+      v4: view                        (viewed only)
+
+    Hand-computed funnel:
+      view        = 4 visitors
+      addtocart   = 2 (v1, v2)      step 2/4 = 50%, progressed 2/4 = 50%
+      transaction = 2 (v1, v3)      step 2/2 = 100% (naive, counts v3 who was
+                                    never in the cart denominator)
+                                    progressed = |{v1,v3} & {v1,v2}| = 1
+                                    -> 1/2 = 50%
+    This is the shape of the real RetailRocket gap (31.07% vs 28.04%), where
+    9.8% of buyers have no add-to-cart event.
+    """
+    rows = [
+        ("2021-01-04 10:00", 1, "view", 1),
+        ("2021-01-04 11:00", 1, "addtocart", 1),
+        ("2021-01-05 09:00", 1, "transaction", 1),
+        ("2021-01-04 12:00", 2, "view", 2),
+        ("2021-01-04 12:30", 2, "addtocart", 2),
+        ("2021-01-04 13:00", 3, "view", 3),
+        ("2021-01-04 13:30", 3, "transaction", 3),  # buys with no cart event
+        ("2021-01-04 14:00", 4, "view", 4),
+    ]
+    df = pd.DataFrame(rows, columns=["timestamp", "visitorid", "event", "itemid"])
+    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+    df["event"] = df["event"].astype("category")
+    return df
+
+
+def test_funnel_progression_excludes_buyer_who_never_carted(
+    events_with_cartless_buyer,
+):
+    f = funnel(events_with_cartless_buyer).set_index("stage")
+
+    assert f.loc["view", "visitors"] == 4
+    assert f.loc["addtocart", "visitors"] == 2
+    assert f.loc["transaction", "visitors"] == 2
+
+    # Stage-count view: 2 buyers / 2 cart-adders = 100%, even though only one
+    # of those buyers ever passed through the cart.
+    assert f.loc["transaction", "step_conversion"] == pytest.approx(1.0)
+
+    # Progression view: only v1 both carted and bought -> 1 / 2 cart-adders.
+    assert f.loc["transaction", "visitors_progressed"] == 1
+    assert f.loc["transaction", "step_conversion_progressed"] == pytest.approx(0.5)
+
+    # view -> addtocart has no such gap: every carter also viewed.
+    assert f.loc["addtocart", "visitors_progressed"] == 2
+    assert f.loc["addtocart", "step_conversion_progressed"] == pytest.approx(0.5)
+    assert f.loc["addtocart", "step_conversion"] == pytest.approx(0.5)
+
+    # Top stage has no previous stage to progress from.
+    assert pd.isna(f.loc["view", "visitors_progressed"])
+    assert np.isnan(f.loc["view", "step_conversion_progressed"])
+
+
+def test_funnel_progression_never_exceeds_stage_conversion(
+    events, events_with_cartless_buyer
+):
+    """Progression counts are a subset of stage counts, in every fixture."""
+    for df in (events, events_with_cartless_buyer):
+        steps = funnel(df).iloc[1:]
+        assert (steps["visitors_progressed"] <= steps["visitors"]).all()
+        assert (
+            steps["step_conversion_progressed"] <= steps["step_conversion"]
+        ).all()
+        assert steps["step_conversion_progressed"].between(0, 1).all()
+
+
+def test_funnel_progression_matches_step_when_no_gap(events):
+    """In the original fixture every buyer also carted, so the two rates agree."""
+    f = funnel(events).set_index("stage")
+    assert f.loc["transaction", "visitors_progressed"] == 1
+    assert f.loc["transaction", "step_conversion_progressed"] == pytest.approx(
+        f.loc["transaction", "step_conversion"]
+    )
+
+
 def test_kpis_values(events):
     k = kpis(events)
     assert k["total_visitors"] == 3

@@ -24,36 +24,64 @@ def funnel(df: pd.DataFrame) -> pd.DataFrame:
     anywhere in the window (not strictly ordered per-visit). Returns one row
     per stage with:
 
-    - ``visitors``        : distinct visitors who reached the stage
-    - ``pct_of_top``      : visitors / stage-1 visitors (overall funnel %)
-    - ``step_conversion`` : visitors / previous-stage visitors (per-step %)
+    - ``visitors``             : distinct visitors who reached the stage
+    - ``pct_of_top``           : visitors / stage-1 visitors (overall funnel %)
+    - ``step_conversion``      : visitors / previous-stage visitors (per-step %)
+    - ``visitors_progressed``  : visitors who reached this stage **and** the
+      previous one (``<NA>`` for the top stage, which has no previous stage)
+    - ``step_conversion_progressed`` : visitors_progressed / previous-stage
+      visitors — the same step measured as an actual progression
+
+    The two rates answer different questions and both are reported. Not every
+    visitor at a stage passed through the recorded stage before it: in the
+    RetailRocket data 9.8% of buyers have no add-to-cart event at all (a
+    tracking gap, or a purchase path that skips the cart). ``step_conversion``
+    counts those people in the numerator though they were never in the
+    denominator, so it reads 31.07% for cart->purchase; the progression rate
+    excludes them and reads 28.04%. Use ``step_conversion`` for a stage-count
+    view of the funnel, and ``step_conversion_progressed`` as the baseline for
+    experiment sizing — it is the rate an intervention on that step can move.
 
     Note: counts are not guaranteed monotonic in theory (a cart with no prior
     recorded view is possible), so ``step_conversion`` can exceed 1.0; in the
     RetailRocket data it does not. We surface the raw numbers rather than
     forcing monotonicity, so the metric stays honest.
+    ``step_conversion_progressed`` is bounded by 1.0 by construction.
     """
-    counts = {
-        stage: df.loc[df["event"] == stage, "visitorid"].nunique()
+    reached: dict[str, set[int]] = {
+        stage: set(df.loc[df["event"] == stage, "visitorid"])
         for stage in FUNNEL_STAGES
     }
+    counts = {stage: len(v) for stage, v in reached.items()}
     top = counts[FUNNEL_STAGES[0]]
 
     rows = []
-    prev: int | None = None
+    prev_stage: str | None = None
     for stage in FUNNEL_STAGES:
         n = counts[stage]
+        prev = counts[prev_stage] if prev_stage is not None else None
+        progressed = (
+            len(reached[stage] & reached[prev_stage])
+            if prev_stage is not None
+            else pd.NA
+        )
         rows.append(
             {
                 "stage": stage,
                 "visitors": n,
                 "pct_of_top": (n / top) if top else float("nan"),
                 "step_conversion": (n / prev) if prev else float("nan"),
+                "visitors_progressed": progressed,
+                "step_conversion_progressed": (
+                    (progressed / prev) if prev else float("nan")
+                ),
             }
         )
-        prev = n
+        prev_stage = stage
 
-    return pd.DataFrame(rows)
+    out = pd.DataFrame(rows)
+    out["visitors_progressed"] = out["visitors_progressed"].astype("Int64")
+    return out
 
 
 def cohort_retention(df: pd.DataFrame, freq: str = "W") -> pd.DataFrame:
@@ -191,10 +219,25 @@ def _print_verification(df: pd.DataFrame) -> None:
             f"  {r['stage']:<12} {int(r['visitors']):>9,}"
             f"  | of top {r['pct_of_top']:6.2%}"
             f"  | step {r['step_conversion'] if pd.notna(r['step_conversion']) else float('nan'):6.2%}"
+            f"  | step (progressed) "
+            f"{r['step_conversion_progressed'] if pd.notna(r['step_conversion_progressed']) else float('nan'):6.2%}"
         )
     # Funnel stages cannot exceed total visitor count.
     total_v = df["visitorid"].nunique()
     assert f["visitors"].max() <= total_v, "a funnel stage exceeds total visitors"
+
+    # Progression is a subset of the stage count, so its rate can never exceed
+    # the stage-count rate, and is bounded by 1.0.
+    steps = f.iloc[1:]
+    assert (steps["visitors_progressed"] <= steps["visitors"]).all(), (
+        "more visitors progressed into a stage than reached it"
+    )
+    assert (steps["step_conversion_progressed"] <= steps["step_conversion"]).all(), (
+        "progression rate exceeds the stage-count rate"
+    )
+    assert steps["step_conversion_progressed"].between(0, 1).all(), (
+        "progression rate out of range"
+    )
 
     print("\n=== KPIs ===")
     k = kpis(df)

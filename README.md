@@ -64,14 +64,20 @@ The Churn tab doesn't just report the model — it lets you use it:
 ## Metric definitions
 
 - **Funnel** (visitor-level): a visitor "reaches" a stage if they performed
-  that event at least once. Step conversion = stage / previous stage; overall =
-  transaction / view.
-  > **Caveat when reading cart→purchase.** 9.8% of buyers have no add-to-cart
+  that event at least once. `funnel()` reports the step two ways:
+  `step_conversion` = stage / previous stage, and `step_conversion_progressed`
+  = visitors who reached this stage *and* the previous one / previous stage.
+  Overall = transaction / view.
+  > **Why two rates for cart→purchase.** 9.8% of buyers have no add-to-cart
   > event (tracking gap, or a path that skips the cart), so `stage / previous
   > stage` counts them in the numerator without ever having them in the
   > denominator — it reads 31.07% where progression-based (buyers who *also*
   > carted ÷ cart-adders) reads 28.04%. Fine for a stage-count view, but use the
-  > progression figure as an experiment baseline. See `results/funnel_numbers.md`.
+  > progression figure as an experiment baseline: it's the rate a change to that
+  > step can actually move. The Funnel tab shows the progression rate per step
+  > and flags the gap. The same applies to view→addtocart, where 8.8% of
+  > cart-adders have no recorded view (2.69% vs 2.45%).
+  > See `results/funnel_numbers.md`.
 - **Cohort retention** (weekly): a visitor's cohort is the ISO week of their
   first event; they are *retained* in week _N_ if they have **any** event that
   week. Week 0 is 100% by construction.
