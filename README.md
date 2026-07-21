@@ -66,6 +66,12 @@ The Churn tab doesn't just report the model — it lets you use it:
 - **Funnel** (visitor-level): a visitor "reaches" a stage if they performed
   that event at least once. Step conversion = stage / previous stage; overall =
   transaction / view.
+  > **Caveat when reading cart→purchase.** 9.8% of buyers have no add-to-cart
+  > event (tracking gap, or a path that skips the cart), so `stage / previous
+  > stage` counts them in the numerator without ever having them in the
+  > denominator — it reads 31.07% where progression-based (buyers who *also*
+  > carted ÷ cart-adders) reads 28.04%. Fine for a stage-count view, but use the
+  > progression figure as an experiment baseline. See `results/funnel_numbers.md`.
 - **Cohort retention** (weekly): a visitor's cohort is the ISO week of their
   first event; they are *retained* in week _N_ if they have **any** event that
   week. Week 0 is 100% by construction.
@@ -89,11 +95,22 @@ src/
   metrics.py        pure functions: funnel(), cohort_retention(), kpis(),
                     daily_active(), top_items()
   churn.py          churn dataset, model training/evaluation, scoring
+scripts/
+  funnel_analysis.py  funnel + segment cuts backing the growth case study
+case-study.md       growth case study (funnel diagnosis + experiment design)
+docs/
+  case-study-brief.md  the brief that case-study.md was written against
+results/
+  funnel_numbers.md   computed figures the case study cites
 tests/              pytest suite (synthetic fixtures, hand-computed expectations)
 .github/workflows/  CI — pytest on every push
 data/               raw data (git-ignored, never committed)
 requirements.txt    pinned dependencies
 ```
+
+> **Note:** `case-study.md` and `docs/case-study-brief.md` must not be renamed to
+> names differing only by capitalisation (e.g. `CASE-STUDY.md`) — this repo is
+> developed on a case-insensitive filesystem, where those collide into one file.
 
 Metric logic stays separate from the UI and is verifiable on its own — each
 `src/` module has a `__main__` that prints the numbers with internal
@@ -104,7 +121,26 @@ python src/data_load.py   # sanity check: row count, visitors, event mix, dates
 python src/metrics.py     # funnel / retention / KPI / item numbers + assertions
 python src/churn.py       # churn model metrics, scoring + insight
 pytest                    # unit tests (no dataset needed — synthetic fixtures)
+
+python scripts/funnel_analysis.py   # funnel + segment cuts -> results/funnel_numbers.md
 ```
+
+## Growth case study
+
+[`case-study.md`](case-study.md) is a companion PM/growth artifact: the dashboard
+*surfaces* the funnel drop-off, the case study *diagnoses it and designs
+experiments to fix it*. Every figure in it is computed by
+`scripts/funnel_analysis.py` — none are illustrative.
+
+Headline: **2.69%** of viewers add to cart, **28.04%** of cart-adders buy
+(**0.83%** end to end). The worst-converting pocket is **new visitors with
+single-item carts at 23.86%** — which is also 65% of all cart activity.
+
+Two results in there ran against the initial hypotheses, and the document keeps
+the contradiction rather than smoothing it: multi-item carts convert *better*
+(36.93% vs 25.76%), which undercuts the "cost shock on big baskets" story; and a
+5% relative MDE would need ~17 weeks at the observed traffic, so the experiment
+is re-specified at +10% / ~4.5 weeks with the resulting blind spot stated.
 
 ## Running locally
 
