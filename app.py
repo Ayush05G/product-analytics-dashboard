@@ -70,33 +70,57 @@ def _filter(start: date, end: date):
     return df[(d >= start) & (d <= end)]
 
 
+# --- Cached aggregations, and how to invalidate them ------------------------
+#
+# Streamlit keys a @st.cache_data entry on the *wrapper's own source code*
+# (`inspect.getsource`, comments included) plus the arguments actually passed —
+# NOT on the src/ metric functions the wrapper calls, and NOT on default
+# argument values. So when a metric function changes the SHAPE of its output —
+# a new column, a rename — previously cached values stay live and the new UI
+# code fails on them.
+#
+# That broke production once: funnel() gained `step_conversion_progressed`,
+# get_funnel() kept serving cached 4-column frames, and render_funnel died with
+# `KeyError: 'step_conversion_progressed'`.
+#
+# Each wrapper therefore carries a `cache-schema` comment. Bumping it edits the
+# wrapper's source, which changes its cache key and discards stale entries.
+# **Bump the relevant one whenever a src/ function's output shape changes.**
+
+
 @st.cache_data(show_spinner="Computing KPIs…")
 def get_kpis(start: date, end: date):
+    # cache-schema: 1
     return kpis(_filter(start, end))
 
 
 @st.cache_data(show_spinner="Building funnel…")
 def get_funnel(start: date, end: date):
+    # cache-schema: 2  (2: added visitors_progressed / step_conversion_progressed)
     return funnel(_filter(start, end))
 
 
 @st.cache_data(show_spinner="Building cohorts…")
 def get_cohorts(start: date, end: date):
+    # cache-schema: 1
     return cohort_retention(_filter(start, end), freq="W")
 
 
 @st.cache_data
 def get_sanity(start: date, end: date):
+    # cache-schema: 1
     return sanity_report(_filter(start, end))
 
 
 @st.cache_data(show_spinner="Computing activity trend…")
 def get_daily_active(start: date, end: date):
+    # cache-schema: 1
     return daily_active(_filter(start, end))
 
 
 @st.cache_data(show_spinner="Ranking items…")
 def get_top_items(start: date, end: date, n: int = 20):
+    # cache-schema: 1
     return top_items(_filter(start, end), n=n)
 
 
@@ -123,11 +147,17 @@ def get_scored():
 
 
 def funnel_insight(f) -> str:
-    """Name the biggest leak in the funnel from the step-conversion rates."""
+    """Name the biggest leak in the funnel from the step-conversion rates.
+
+    Uses the progression rate, matching the per-step metrics rendered directly
+    above it. Reading the drop off ``step_conversion`` instead would contradict
+    them on screen — the metric would show 2.45% while the sentence claimed
+    97.3% (= 1 - 2.69%) never continued.
+    """
     steps = f.iloc[1:]  # rows after the top stage have a step_conversion
-    worst = steps.loc[steps["step_conversion"].idxmin()]
+    worst = steps.loc[steps["step_conversion_progressed"].idxmin()]
     prev_stage = FUNNEL_STAGES[FUNNEL_STAGES.index(worst["stage"]) - 1]
-    drop = 1 - worst["step_conversion"]
+    drop = 1 - worst["step_conversion_progressed"]
     overall = f.iloc[-1]["pct_of_top"]
     return (
         f"The biggest leak is **{prev_stage} → {worst['stage']}**: "

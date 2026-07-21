@@ -25,3 +25,9 @@ __pycache__/
 Thumbs.db
 .vscode/
 .idea/
+
+# Claude Code local state. worktrees/ can hold a directory junction pointing at
+# the real (git-ignored) data/ — never let it be traversed or committed.
+# settings.local.json is machine-local; don't rely on a global ignore for it.
+.claude/worktrees/
+.claude/settings.local.json
