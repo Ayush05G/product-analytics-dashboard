@@ -428,7 +428,6 @@ Definitions used here, stated so they can be audited:
 The script asserts internal consistency before reporting: funnel monotonicity,
 segments summing to stage totals, all rates in [0,1], 7-day conversion ≥
 same-day, and reconciliation of the two independent conversion-rate paths.
-*(Link the repo / live dashboard here.)*
 
 ---
 
