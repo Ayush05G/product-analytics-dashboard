@@ -470,7 +470,10 @@ def render_funnel(start: date, end: date) -> None:
                 line=dict(width=0),
             ),
             textfont=dict(color=_TEXT, size=14),
-            connector=dict(line=dict(color="rgba(255,255,255,0.06)", width=1)),
+            connector=dict(
+                fillcolor="rgba(255, 255, 255, 0.08)",
+                line=dict(width=0),
+            ),
         )
     )
     fig.update_layout(**_dark_layout(height=400))
