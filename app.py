@@ -508,10 +508,10 @@ def render_retention(start: date, end: date) -> None:
     st.subheader("📅  Weekly Cohort Retention")
 
     z = (c * 100).round(1)
-    # Custom colorscale: dark bg → deep purple → vibrant teal
+    # Custom colorscale: muted indigo → deep purple → vibrant teal
     _retention_cs = [
-        [0.0, "#0f1117"],
-        [0.15, "#1e1b4b"],
+        [0.0, "#262a3b"],
+        [0.15, "#392c72"],
         [0.4, "#5B21B6"],
         [0.65, "#7C3AED"],
         [0.85, "#0891B2"],
@@ -525,6 +525,8 @@ def render_retention(start: date, end: date) -> None:
             colorscale=_retention_cs,
             zmin=0,
             zmax=20,  # cap so week-0 (100%) doesn't flatten the gradient
+            xgap=1,
+            ygap=1,
             colorbar=dict(
                 title=dict(
                     text="% retained",
@@ -537,6 +539,7 @@ def render_retention(start: date, end: date) -> None:
     )
     fig.update_layout(
         **_dark_layout(
+            title="Cohort Retention Heatmap",
             height=480,
             yaxis=dict(
                 title="Acquisition week",
