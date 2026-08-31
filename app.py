@@ -36,6 +36,187 @@ from src.metrics import (
 
 st.set_page_config(page_title="Product Analytics Dashboard", layout="wide")
 
+# --- Design tokens --------------------------------------------------------
+_PURPLE = "#7C3AED"
+_TEAL = "#06B6D4"
+_AMBER = "#F59E0B"
+_RED = "#EF4444"
+_GREEN = "#10B981"
+_TEXT = "#F1F5F9"
+_TEXT_SEC = "#94A3B8"
+_SURFACE = "#1a1d27"
+_BG = "#0f1117"
+
+
+def _inject_css() -> None:
+    """Inject custom CSS for the premium dark-mode look."""
+    st.markdown(
+        """
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+        /* --- Global font --- */
+        html, body, [class*="css"] {
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* --- Glassmorphism metric cards --- */
+        [data-testid="stMetric"] {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 12px;
+            padding: 16px 20px;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            transition: all 0.3s ease;
+        }
+        [data-testid="stMetric"]:hover {
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(124, 58, 237, 0.3);
+            box-shadow: 0 0 20px rgba(124, 58, 237, 0.1);
+            transform: translateY(-2px);
+        }
+        [data-testid="stMetricValue"] {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #F1F5F9;
+        }
+        [data-testid="stMetricLabel"] {
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: #94A3B8;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        [data-testid="stMetricDelta"] {
+            font-size: 0.75rem;
+        }
+
+        /* --- Tab styling --- */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 8px;
+            background: transparent;
+        }
+        .stTabs [data-baseweb="tab"] {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 10px;
+            padding: 10px 24px;
+            color: #94A3B8;
+            font-weight: 500;
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
+        }
+        .stTabs [data-baseweb="tab"]:hover {
+            background: rgba(124, 58, 237, 0.1);
+            color: #F1F5F9;
+            border-color: rgba(124, 58, 237, 0.3);
+        }
+        .stTabs [aria-selected="true"] {
+            background: linear-gradient(135deg, rgba(124,58,237,0.15), rgba(6,182,212,0.1)) !important;
+            border-color: rgba(124, 58, 237, 0.4) !important;
+            color: #F1F5F9 !important;
+        }
+        .stTabs [data-baseweb="tab-highlight"] {
+            background: linear-gradient(90deg, #7C3AED, #06B6D4) !important;
+            height: 3px !important;
+            border-radius: 3px !important;
+        }
+        .stTabs [data-baseweb="tab-border"] {
+            display: none;
+        }
+
+        /* --- Sidebar polish --- */
+        [data-testid="stSidebar"] {
+            border-right: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        [data-testid="stSidebar"] [data-testid="stMarkdown"] h1 {
+            background: linear-gradient(135deg, #7C3AED, #06B6D4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-size: 1.2rem;
+        }
+
+        /* --- Info / warning callout restyle --- */
+        [data-testid="stAlert"] {
+            background: rgba(255, 255, 255, 0.02) !important;
+            border: 1px solid rgba(255, 255, 255, 0.06) !important;
+            border-radius: 10px !important;
+            border-left: 3px solid #7C3AED !important;
+            backdrop-filter: blur(8px);
+            padding: 14px 18px !important;
+        }
+
+        /* --- Subheader styling --- */
+        [data-testid="stSubheader"], h2 {
+            color: #F1F5F9 !important;
+            font-weight: 600 !important;
+            letter-spacing: -0.02em;
+        }
+
+        /* --- Divider --- */
+        [data-testid="stHorizontalRule"] {
+            border-color: rgba(255, 255, 255, 0.06);
+        }
+
+        /* --- Download button --- */
+        .stDownloadButton > button {
+            background: linear-gradient(135deg, #7C3AED, #6D28D9) !important;
+            border: none !important;
+            border-radius: 8px !important;
+            color: white !important;
+            font-weight: 500 !important;
+            transition: all 0.2s ease !important;
+        }
+        .stDownloadButton > button:hover {
+            box-shadow: 0 0 20px rgba(124, 58, 237, 0.3) !important;
+            transform: translateY(-1px) !important;
+        }
+
+        /* --- Slim scrollbar --- */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+        /* --- Dataframe dark polish --- */
+        [data-testid="stDataFrame"] {
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _dark_layout(**overrides) -> dict:
+    """Base Plotly layout for dark-mode charts. Pass extra keys as overrides."""
+    base = dict(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Inter, sans-serif", color=_TEXT_SEC, size=12),
+        title_font=dict(color=_TEXT, size=16, family="Inter, sans-serif"),
+        margin=dict(l=10, r=10, t=36, b=10),
+        xaxis=dict(
+            gridcolor="rgba(255,255,255,0.04)",
+            zerolinecolor="rgba(255,255,255,0.06)",
+        ),
+        yaxis=dict(
+            gridcolor="rgba(255,255,255,0.04)",
+            zerolinecolor="rgba(255,255,255,0.06)",
+        ),
+        hoverlabel=dict(
+            bgcolor=_SURFACE,
+            font_color=_TEXT,
+            font_size=13,
+            bordercolor="rgba(255,255,255,0.1)",
+        ),
+    )
+    base.update(overrides)
+    return base
+
 
 # --- Cached data layer ----------------------------------------------------
 # Cached metric functions key on the (start, end) date range — cheap to hash —
@@ -233,7 +414,7 @@ def cohort_insight(c) -> str:
 def render_overview(start: date, end: date) -> None:
     k = get_kpis(start, end)
     s = get_sanity(start, end)
-    st.subheader("Overview")
+    st.subheader("📊  Overview")
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Avg DAU", f"{k['dau']:,.0f}")
@@ -245,6 +426,8 @@ def render_overview(start: date, end: date) -> None:
     c5.metric("Conversion rate", f"{k['conversion_rate']:.2%}")
     c6.metric("Repeat-visitor rate", f"{k['repeat_visitor_rate']:.1%}")
 
+    st.markdown("")  # spacing
+
     da = get_daily_active(start, end)
     fig = go.Figure(
         go.Scatter(
@@ -252,15 +435,17 @@ def render_overview(start: date, end: date) -> None:
             y=da.values,
             mode="lines",
             fill="tozeroy",
-            line=dict(color="#2980b9", width=2),
+            line=dict(color=_PURPLE, width=2.5, shape="spline"),
+            fillcolor="rgba(124, 58, 237, 0.12)",
             hovertemplate="%{x|%b %d, %Y}: %{y:,} visitors<extra></extra>",
         )
     )
     fig.update_layout(
-        margin=dict(l=10, r=10, t=30, b=10),
-        height=280,
-        title="Daily active visitors",
-        yaxis_title="Distinct visitors",
+        **_dark_layout(
+            height=300,
+            title="Daily active visitors",
+            yaxis_title="Distinct visitors",
+        )
     )
     st.plotly_chart(fig, use_container_width=True)
 
@@ -273,16 +458,22 @@ def render_overview(start: date, end: date) -> None:
 
 def render_funnel(start: date, end: date) -> None:
     f = get_funnel(start, end)
-    st.subheader("Conversion Funnel")
+    st.subheader("🔻  Conversion Funnel")
 
     fig = go.Figure(
         go.Funnel(
             y=f["stage"].str.capitalize(),
             x=f["visitors"],
             textinfo="value+percent initial",
+            marker=dict(
+                color=[_PURPLE, _TEAL, _AMBER],
+                line=dict(width=0),
+            ),
+            textfont=dict(color=_TEXT, size=14),
+            connector=dict(line=dict(color="rgba(255,255,255,0.06)", width=1)),
         )
     )
-    fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=380)
+    fig.update_layout(**_dark_layout(height=400))
     st.plotly_chart(fig, use_container_width=True)
 
     st.info(funnel_insight(f))
@@ -314,45 +505,87 @@ def render_funnel(start: date, end: date) -> None:
 
 def render_retention(start: date, end: date) -> None:
     c = get_cohorts(start, end)
-    st.subheader("Weekly Cohort Retention")
+    st.subheader("📅  Weekly Cohort Retention")
 
     z = (c * 100).round(1)
+    # Custom colorscale: dark bg → deep purple → vibrant teal
+    _retention_cs = [
+        [0.0, "#0f1117"],
+        [0.15, "#1e1b4b"],
+        [0.4, "#5B21B6"],
+        [0.65, "#7C3AED"],
+        [0.85, "#0891B2"],
+        [1.0, "#06B6D4"],
+    ]
     fig = go.Figure(
         go.Heatmap(
             z=z.values,
             x=[f"W{col}" for col in z.columns],
             y=[d.strftime("%b %d") for d in z.index],
-            colorscale="Blues",
+            colorscale=_retention_cs,
             zmin=0,
             zmax=20,  # cap so week-0 (100%) doesn't flatten the gradient
-            colorbar=dict(title="% retained"),
+            colorbar=dict(
+                title=dict(
+                    text="% retained",
+                    font=dict(color=_TEXT_SEC),
+                ),
+                tickfont=dict(color=_TEXT_SEC),
+            ),
             hovertemplate="Cohort %{y} · %{x}<br>%{z}% retained<extra></extra>",
         )
     )
     fig.update_layout(
-        margin=dict(l=10, r=10, t=10, b=10),
-        height=480,
-        yaxis=dict(title="Acquisition week", autorange="reversed"),
-        xaxis=dict(title="Weeks since first visit"),
+        **_dark_layout(
+            height=480,
+            yaxis=dict(
+                title="Acquisition week",
+                autorange="reversed",
+                gridcolor="rgba(255,255,255,0.04)",
+                zerolinecolor="rgba(255,255,255,0.06)",
+            ),
+            xaxis=dict(
+                title="Weeks since first visit",
+                gridcolor="rgba(255,255,255,0.04)",
+                zerolinecolor="rgba(255,255,255,0.06)",
+            ),
+        )
     )
     st.plotly_chart(fig, use_container_width=True)
 
     decay = c.mean()  # mean retention per week-offset across cohorts (skips NaN)
-    fig2 = go.Figure(
+    fig2 = go.Figure()
+    fig2.add_trace(
         go.Scatter(
             x=decay.index,
             y=decay.values,
             mode="lines+markers",
-            line=dict(color="#2980b9", width=2),
+            line=dict(color=_TEAL, width=2.5),
+            marker=dict(size=7, color=_TEAL, line=dict(width=1, color=_TEXT)),
             hovertemplate="Week %{x}: %{y:.1%} retained<extra></extra>",
         )
     )
+    # Reference line at 5%
+    fig2.add_hline(
+        y=0.05,
+        line_dash="dash",
+        line_color="rgba(255,255,255,0.15)",
+        annotation_text="5%",
+        annotation_font_color=_TEXT_SEC,
+        annotation_font_size=11,
+    )
     fig2.update_layout(
-        margin=dict(l=10, r=10, t=30, b=10),
-        height=280,
-        title="Average retention decay (mean across cohorts)",
-        xaxis_title="Weeks since first visit",
-        yaxis=dict(title="Retained", tickformat=".0%"),
+        **_dark_layout(
+            height=280,
+            title="Average retention decay (mean across cohorts)",
+            xaxis_title="Weeks since first visit",
+            yaxis=dict(
+                title="Retained",
+                tickformat=".0%",
+                gridcolor="rgba(255,255,255,0.04)",
+                zerolinecolor="rgba(255,255,255,0.06)",
+            ),
+        )
     )
     st.plotly_chart(fig2, use_container_width=True)
 
@@ -370,6 +603,8 @@ def _date_range_picker() -> tuple[date, date]:
     Falls back to the full dataset range while the user is mid-selection
     (st.date_input yields a 1-tuple between the two clicks)."""
     lo, hi = get_bounds()
+    st.sidebar.markdown("# 📈 Analytics")
+    st.sidebar.divider()
     st.sidebar.header("Filters")
     picked = st.sidebar.date_input(
         "Date range",
@@ -409,26 +644,40 @@ def items_insight(items) -> str:
 
 def render_items(start: date, end: date) -> None:
     items = get_top_items(start, end)
-    st.subheader("Top Items")
+    st.subheader("📦  Top Items")
 
     if items.empty:
         st.warning("No item activity in the selected date range.")
         return
 
+    n_bars = len(items)
+    # Gradient from purple → teal across bars
+    bar_colors = [
+        f"rgba({int(124 + (6 - 124) * i / max(n_bars - 1, 1))}, "
+        f"{int(58 + (182 - 58) * i / max(n_bars - 1, 1))}, "
+        f"{int(237 + (212 - 237) * i / max(n_bars - 1, 1))}, 0.85)"
+        for i in range(n_bars)
+    ]
     fig = go.Figure(
         go.Bar(
             x=[str(i) for i in items.index],
             y=items["purchases"],
-            marker_color="#2980b9",
+            marker=dict(color=bar_colors, line=dict(width=0)),
             hovertemplate="Item %{x}<br>%{y} purchases<extra></extra>",
         )
     )
     fig.update_layout(
-        margin=dict(l=10, r=10, t=30, b=10),
-        height=320,
-        title="Top items by purchases",
-        xaxis=dict(title="Item ID", type="category"),
-        yaxis_title="Purchases",
+        **_dark_layout(
+            height=340,
+            title="Top items by purchases",
+            xaxis=dict(
+                title="Item ID",
+                type="category",
+                gridcolor="rgba(255,255,255,0.04)",
+                zerolinecolor="rgba(255,255,255,0.06)",
+            ),
+            yaxis_title="Purchases",
+        )
     )
     st.plotly_chart(fig, use_container_width=True)
 
@@ -447,25 +696,41 @@ def render_items(start: date, end: date) -> None:
 
 
 def _prob_gauge(p: float) -> go.Figure:
-    """Churn probability as a gauge: red when at risk, blue when likely back."""
+    """Churn probability as a gauge: dark face, gradient arc green→amber→red."""
     fig = go.Figure(
         go.Indicator(
             mode="gauge+number",
             value=p * 100,
-            number={"suffix": "%", "font": {"size": 40}},
-            title={"text": "Churn probability", "font": {"size": 14}},
+            number={"suffix": "%", "font": {"size": 42, "color": _TEXT}},
+            title={"text": "Churn probability", "font": {"size": 14, "color": _TEXT_SEC}},
             gauge={
-                "axis": {"range": [0, 100], "ticksuffix": "%"},
-                "bar": {"color": "#c0392b" if p >= 0.5 else "#2980b9"},
+                "axis": {
+                    "range": [0, 100],
+                    "ticksuffix": "%",
+                    "tickfont": {"color": _TEXT_SEC, "size": 10},
+                },
+                "bgcolor": "rgba(0,0,0,0)",
+                "bar": {"color": _RED if p >= 0.5 else _TEAL, "thickness": 0.3},
+                "steps": [
+                    {"range": [0, 30], "color": "rgba(16, 185, 129, 0.15)"},
+                    {"range": [30, 60], "color": "rgba(245, 158, 11, 0.15)"},
+                    {"range": [60, 100], "color": "rgba(239, 68, 68, 0.15)"},
+                ],
                 "threshold": {
-                    "line": {"color": "gray", "width": 2},
+                    "line": {"color": _TEXT_SEC, "width": 2},
                     "thickness": 0.75,
                     "value": 50,
                 },
             },
         )
     )
-    fig.update_layout(margin=dict(l=30, r=30, t=40, b=10), height=260)
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Inter, sans-serif"),
+        margin=dict(l=30, r=30, t=40, b=10),
+        height=260,
+    )
     return fig
 
 
@@ -577,7 +842,7 @@ def _render_at_risk() -> None:
 
 def render_churn() -> None:
     res = get_churn()
-    st.subheader("Churn (Return-Prediction) Model")
+    st.subheader("⚡  Churn (Return-Prediction) Model")
 
     scores = res["scores"]
     best = best_model_name(res)
@@ -592,6 +857,8 @@ def render_churn() -> None:
         delta_color="off",
     )
 
+    st.markdown("")  # spacing
+
     # Standardized logistic coefficients: comparable across features and the
     # basis for the insight. Positive = pushes toward churn, negative = return.
     coefs = res["coefs"]
@@ -603,15 +870,19 @@ def render_churn() -> None:
             x=values,
             y=labels,
             orientation="h",
-            marker_color=["#c0392b" if v > 0 else "#2980b9" for v in values],
+            marker=dict(
+                color=[_RED if v > 0 else _TEAL for v in values],
+                line=dict(width=0),
+            ),
             hovertemplate="%{y}: %{x:+.3f}<extra></extra>",
         )
     )
     fig.update_layout(
-        margin=dict(l=10, r=10, t=30, b=10),
-        height=420,
-        title="What predicts churn — standardized logistic coefficients",
-        xaxis_title="← predicts return     coefficient     predicts churn →",
+        **_dark_layout(
+            height=420,
+            title="What predicts churn — standardized logistic coefficients",
+            xaxis_title="← predicts return     coefficient     predicts churn →",
+        )
     )
     st.plotly_chart(fig, use_container_width=True)
 
@@ -638,8 +909,27 @@ def render_churn() -> None:
 
 
 def main() -> None:
-    st.title("Product Analytics Dashboard")
-    st.caption("RetailRocket clickstream — funnel, retention, and KPIs.")
+    _inject_css()
+
+    # --- Hero header ---
+    st.markdown(
+        """
+        <h1 style="
+            background: linear-gradient(135deg, #7C3AED 0%, #06B6D4 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-size: 2.4rem;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            margin-bottom: 0;
+        ">Product Analytics Dashboard</h1>
+        <p style="color: #94A3B8; font-size: 1rem; margin-top: 4px;">
+            RetailRocket clickstream — funnel, retention, and KPIs
+        </p>
+        """,
+        unsafe_allow_html=True,
+    )
 
     start, end = _date_range_picker()
 
@@ -648,7 +938,7 @@ def main() -> None:
         return
 
     overview, funnel_tab, retention_tab, items_tab, churn_tab = st.tabs(
-        ["Overview", "Funnel", "Retention", "Items", "Churn"]
+        ["📊 Overview", "🔻 Funnel", "📅 Retention", "📦 Items", "⚡ Churn"]
     )
     with overview:
         render_overview(start, end)
