@@ -471,12 +471,17 @@ def render_funnel(start: date, end: date) -> None:
             ),
             textfont=dict(color=_TEXT, size=14),
             connector=dict(
-                fillcolor="rgba(255, 255, 255, 0.08)",
+                fillcolor="rgba(255, 255, 255, 0.15)",
                 line=dict(width=0),
             ),
         )
     )
-    fig.update_layout(**_dark_layout(height=400))
+    fig.update_layout(
+        **_dark_layout(
+            title="Conversion Funnel",
+            height=400,
+        )
+    )
     st.plotly_chart(fig, use_container_width=True)
 
     st.info(funnel_insight(f))
