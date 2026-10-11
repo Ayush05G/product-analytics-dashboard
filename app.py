@@ -9,7 +9,6 @@ plain-English insight derived from the data, not just a chart.
 from __future__ import annotations
 
 import os
-from calendar import monthrange
 from datetime import date
 
 import plotly.graph_objects as go
@@ -125,6 +124,18 @@ def _inject_css() -> None:
         }
         .stTabs [data-baseweb="tab-border"] {
             display: none;
+        }
+
+        /* Keep date calendars below the toolbar, even in a scrolled sidebar.
+           BaseWeb's translated popup can otherwise extend above the viewport. */
+        [data-baseweb="popover"]:has([data-baseweb="calendar"]) {
+            position: fixed !important;
+            top: 4.5rem !important;
+            left: 1rem !important;
+            transform: none !important;
+            max-height: calc(100dvh - 5.5rem);
+            max-width: calc(100vw - 2rem);
+            overflow-y: auto;
         }
 
         /* --- Sidebar polish --- */
@@ -609,45 +620,6 @@ def render_retention(start: date, end: date) -> None:
     )
 
 
-def _sidebar_date(label: str, key: str, lo: date, hi: date, default: date) -> date:
-    """Inline month/year and day controls, without a clipped calendar popup."""
-    months = []
-    month = lo.replace(day=1)
-    while month <= hi.replace(day=1):
-        months.append(month)
-        month = date(month.year + month.month // 12, month.month % 12 + 1, 1)
-
-    month_key, day_key = f"{key}_month", f"{key}_day"
-    if month_key in st.session_state and st.session_state[month_key] not in months:
-        st.session_state[month_key] = months[0]
-    month_col, day_col = st.sidebar.columns([2, 1])
-    selected_month = month_col.selectbox(
-        f"{label} month / year",
-        months,
-        index=(
-            None if month_key in st.session_state
-            else months.index(default.replace(day=1))
-        ),
-        format_func=lambda d: d.strftime("%B %Y"),
-        key=month_key,
-    )
-    first_day = lo.day if selected_month == lo.replace(day=1) else 1
-    last_day = hi.day if selected_month == hi.replace(day=1) else monthrange(
-        selected_month.year, selected_month.month
-    )[1]
-    days = list(range(first_day, last_day + 1))
-    default_day = max(first_day, min(last_day, default.day))
-    if day_key in st.session_state:
-        st.session_state[day_key] = max(first_day, min(last_day, st.session_state[day_key]))
-    day = day_col.selectbox(
-        f"{label} day",
-        days,
-        index=None if day_key in st.session_state else days.index(default_day),
-        key=day_key,
-    )
-    return selected_month.replace(day=day)
-
-
 def _date_range_picker() -> tuple[date, date]:
     """Select a complete range within the historical dataset's bounds."""
     lo, hi = get_bounds()
@@ -655,8 +627,25 @@ def _date_range_picker() -> tuple[date, date]:
     st.sidebar.divider()
     st.sidebar.header("Filters")
     st.sidebar.caption(f"Available data: {lo:%b %d, %Y} – {hi:%b %d, %Y}")
-    start = _sidebar_date("Start", "filter_start", lo, hi, lo)
-    end = _sidebar_date("End", "filter_end", start, hi, hi)
+    start = st.sidebar.date_input(
+        "Start date",
+        value=lo,
+        min_value=lo,
+        max_value=hi,
+        format="YYYY-MM-DD",
+        key="filter_start",
+    )
+    # Keep the range valid when the start moves past the previous end.
+    if st.session_state.get("filter_end", hi) < start:
+        st.session_state["filter_end"] = start
+    end = st.sidebar.date_input(
+        "End date",
+        value=None if "filter_end" in st.session_state else hi,
+        min_value=start,
+        max_value=hi,
+        format="YYYY-MM-DD",
+        key="filter_end",
+    )
     st.sidebar.caption(f"Showing {start:%b %d, %Y} – {end:%b %d, %Y}")
     return start, end
 
