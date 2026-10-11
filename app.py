@@ -609,27 +609,31 @@ def render_retention(start: date, end: date) -> None:
 
 
 def _date_range_picker() -> tuple[date, date]:
-    """Sidebar date-range control; returns the selected (start, end).
-
-    Falls back to the full dataset range while the user is mid-selection
-    (st.date_input yields a 1-tuple between the two clicks)."""
+    """Select a complete range within the historical dataset's bounds."""
     lo, hi = get_bounds()
     st.sidebar.markdown("# 📈 Analytics")
     st.sidebar.divider()
     st.sidebar.header("Filters")
-    picked = st.sidebar.date_input(
-        "Date range",
-        value=(lo, hi),
+    st.sidebar.caption(f"Available data: {lo:%b %d, %Y} – {hi:%b %d, %Y}")
+    start = st.sidebar.date_input(
+        "Start date",
+        value=lo,
         min_value=lo,
         max_value=hi,
         format="YYYY-MM-DD",
+        key="filter_start",
     )
-    if isinstance(picked, (tuple, list)) and len(picked) == 2:
-        start, end = picked
-    else:  # mid-selection (single date) — hold the full range until complete
-        start, end = lo, hi
-    if start > end:
-        start, end = end, start
+    # Keep the range valid when the start moves past the previous end.
+    if st.session_state.get("filter_end", hi) < start:
+        st.session_state["filter_end"] = start
+    end = st.sidebar.date_input(
+        "End date",
+        value=None if "filter_end" in st.session_state else hi,
+        min_value=start,
+        max_value=hi,
+        format="YYYY-MM-DD",
+        key="filter_end",
+    )
     st.sidebar.caption(f"Showing {start:%b %d, %Y} – {end:%b %d, %Y}")
     return start, end
 
